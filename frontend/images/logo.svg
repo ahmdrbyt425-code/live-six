@@ -1,24 +1,14 @@
-<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://w3.org" xmlns:xlink="http://w3.org">
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://w3.org">
   <defs>
-    <!-- الحفاظ على التدرج اللوني الغني الخاص بك -->
-    <radialGradient cx="50%" cy="50%" r="70%" id="bunnyGrad">
-      <stop stop-color="#FFD4CA" offset="0%"/>
-      <stop stop-color="#FF8D74" offset="30%"/>
-      <stop stop-color="#D262B4" offset="70%"/>
-      <stop stop-color="#376DF9" offset="100%"/>
-    </radialGradient>
+    <!-- التدرج اللوني العصري الخاص بك -->
+    <linearGradient id="singlePathGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#376DF9"/>
+      <stop offset="46%" stop-color="#D262B4"/>
+      <stop offset="77%" stop-color="#FF8D74"/>
+      <stop offset="100%" stop-color="#FFD4CA"/>
+    </linearGradient>
   </defs>
-  
-  <g fill="url(#bunnyGrad)">
-    <!-- الجسم الرئيسي على شكل قلب يمثل مؤخرة الأرنب -->
-    <path d="M16 28 C13.5 25.5 4 17 4 11 C4 6.5 7.5 3 12 3 C14.5 3 15.5 4.5 16 5.5 C16.5 4.5 17.5 3 20 3 C24.5 3 28 6.5 28 11 C28 17 18.5 25.5 16 28 Z" />
-    
-    <!-- الأقدام اللطيفة في الأسفل المدمجة مع انحناءة القلب -->
-    <ellipse cx="10" cy="22" rx="3" ry="4" transform="rotate(-15 10 22)" opacity="0.9"/>
-    <ellipse cx="22" cy="22" rx="3" ry="4" transform="rotate(15 22 22)" opacity="0.9"/>
-  </g>
-  
-  <!-- ذيل الأرنب الفروي الدائري في المنتصف بلون فاتح ومتدرج ليعطي مجسماً بارزاً -->
-  <circle cx="16" cy="13" r="4.5" fill="#FFFFFF" opacity="0.95" />
-  <circle cx="16" cy="13" r="3" fill="#FFD4CA" opacity="0.6" />
+
+  <!-- كل تفاصيل مؤخرة الأرنب والقلب مدمجة هنا في سطر واحد -->
+  <path fill="url(#singlePathGrad)" fill-rule="evenodd" d="M16 28.5C14.2 26.8 4 17.2 4 11.2C4 6.7 7.6 3 12.1 3C14.7 3 15.4 4.2 16 5.2C16.6 4.2 17.3 3 19.9 3C24.4 3 28 6.7 28 11.2C28 17.2 17.8 26.8 16 28.5ZM10 25C11.933 25 13.5 22.7614 13.5 20C13.5 17.2386 11.933 15 10 15C8.067 15 6.5 17.2386 6.5 20C6.5 22.7614 8.067 25 10 25ZM22 25C23.933 25 25.5 22.7614 25.5 20C25.5 17.2386 23.933 15 22 15C20.067 15 18.5 17.2386 18.5 20C18.5 22.7614 20.067 25 22 25ZM16 16.5C18.4853 16.5 20.5 14.4853 20.5 12C20.5 9.51472 18.4853 7.5 16 7.5C13.5147 7.5 11.5 9.51472 11.5 12C11.5 14.4853 13.5147 16.5 16 16.5Z"/>
 </svg>
