@@ -562,7 +562,58 @@ io.use((socket, next) => {
 
     return next(
         new Error(
-            'Authentication required'
+            'أكيد. هذه نسخة إنجليزية لصفحة **18+**، بدون وصف جنسي صريح:
+
+# The Jumping Rabbit 🐰
+
+## 18+ Adult Content Warning
+
+Welcome to **The Jumping Rabbit**, a website intended exclusively for adults aged **18 and over**.
+
+This website may contain adult-oriented live streams and material that is not suitable for minors.
+
+By entering this website, you confirm that you are at least **18 years old** and legally permitted to access adult content in your location.
+
+If you are under 18, please leave this website immediately.
+
+Please respect the privacy of streamers and other visitors at all times.
+
+Do not share personal information, passwords, financial details, or private documents with other users.
+
+Be careful when communicating with people you do not personally know.
+
+Do not click suspicious links or download unknown files.
+
+Never send money to someone simply because they request it through a live chat.
+
+Use the reporting and blocking features whenever you encounter suspicious or inappropriate behavior.
+
+Do not record, copy, or redistribute live-stream content without the appropriate permission.
+
+Respect copyright, privacy, and applicable laws.
+
+The Jumping Rabbit is intended for responsible adult use only.
+
+You are responsible for following the laws and regulations applicable in your country.
+
+If adult content is restricted or prohibited where you live, do not enter the website.
+
+Please use the service responsibly and respect other members of the community.
+
+Your continued use of this website means that you acknowledge this age warning.
+
+### Before You Continue
+
+**Are you 18 years old or older?**
+
+**YES, I AM 18+**
+
+**NO, EXIT**
+
+By selecting **YES, I AM 18+**, you confirm that you meet the minimum age requirement and agree to use the website responsibly.
+
+**The Jumping Rabbit — Live Streaming for Adults 18+**
+'
         )
     );
 });
