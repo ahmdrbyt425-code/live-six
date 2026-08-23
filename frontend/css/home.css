@@ -2,8 +2,8 @@
 
 :root {
     --home-bg: #15161a;
-    --card-bg: rgba(255, 255, 255, 0.04);
-    --card-border: rgba(255, 255, 255, 0.08);
+    --card-bg: rgba(0, 0, 0, 0.25);
+    --card-border: rgba(255, 255, 255, 0.18);
     --input-bg: rgba(0, 0, 0, 0.35);
     --input-border: rgba(255, 255, 255, 0.1);
     --input-focus: #376df9;
