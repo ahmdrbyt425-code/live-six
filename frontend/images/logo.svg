@@ -1,3 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1">
-  <rect width="1" height="1" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- الغلاف الدائري -->
+  <circle cx="50" cy="50" r="47" fill="#ffffff"/>
+
+  <!-- أوراق صغيرة -->
+  <path d="M50 28
+           C43 20 36 22 39 31
+           C43 28 47 30 50 35
+           C53 30 57 28 61 31
+           C64 22 57 20 50 28Z"
+        fill="#43A047"/>
+
+  <!-- الجزرة الصغيرة -->
+  <path d="M40 31
+           C37 43 34 55 38 66
+           C41 76 47 83 50 86
+           C53 83 59 76 62 66
+           C66 55 63 43 60 31
+           C54 35 46 35 40 31Z"
+        fill="#F57C00"/>
+
+  <!-- تفاصيل الجزرة -->
+  <path d="M41 48 C46 51 54 51 59 48"
+        fill="none"
+        stroke="#D95F00"
+        stroke-width="2.5"
+        stroke-linecap="round"/>
+
+  <path d="M39 60 C45 63 55 63 61 60"
+        fill="none"
+        stroke="#D95F00"
+        stroke-width="2.5"
+        stroke-linecap="round"/>
+
+  <path d="M43 71 C47 73 53 73 57 71"
+        fill="none"
+        stroke="#D95F00"
+        stroke-width="2.5"
+        stroke-linecap="round"/>
 </svg>
