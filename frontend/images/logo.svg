@@ -1,40 +1,57 @@
+```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <!-- الغلاف الدائري -->
   <circle cx="50" cy="50" r="47" fill="#ffffff"/>
 
-  <!-- أوراق صغيرة -->
-  <path d="M50 28
-           C43 20 36 22 39 31
-           C43 28 47 30 50 35
-           C53 30 57 28 61 31
-           C64 22 57 20 50 28Z"
+  <!-- أوراق الجزرة -->
+  <path d="M50 31
+           C46 25 40 22 36 25
+           C38 29 42 32 47 34
+           C43 27 43 21 47 18
+           C50 22 51 27 50 32
+           C52 26 57 21 62 22
+           C62 27 57 32 53 34
+           C58 31 63 30 66 33
+           C62 37 56 38 51 35
+           C50 34 50 32 50 31Z"
         fill="#43A047"/>
 
-  <!-- الجزرة الصغيرة -->
-  <path d="M40 31
-           C37 43 34 55 38 66
-           C41 76 47 83 50 86
-           C53 83 59 76 62 66
-           C66 55 63 43 60 31
-           C54 35 46 35 40 31Z"
-        fill="#F57C00"/>
+  <!-- جسم الجزرة -->
+  <path d="M40 32
+           C38 42 37 51 38 60
+           C39 70 44 80 50 87
+           C56 80 61 70 62 60
+           C63 51 62 42 60 32
+           C54 35 46 35 40 32Z"
+        fill="#F47C00"/>
 
-  <!-- تفاصيل الجزرة -->
+  <!-- إضاءة خفيفة على الجزرة -->
+  <path d="M43 38
+           C41 49 42 61 45 70
+           C46 74 48 78 50 81"
+        fill="none"
+        stroke="#FF9D24"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        opacity="0.8"/>
+
+  <!-- خطوط الجزرة -->
   <path d="M41 48 C46 51 54 51 59 48"
         fill="none"
-        stroke="#D95F00"
-        stroke-width="2.5"
+        stroke="#D85C00"
+        stroke-width="2"
         stroke-linecap="round"/>
 
-  <path d="M39 60 C45 63 55 63 61 60"
+  <path d="M40 59 C45 62 55 62 60 59"
         fill="none"
-        stroke="#D95F00"
-        stroke-width="2.5"
+        stroke="#D85C00"
+        stroke-width="2"
         stroke-linecap="round"/>
 
-  <path d="M43 71 C47 73 53 73 57 71"
+  <path d="M43 70 C47 72 53 72 57 70"
         fill="none"
-        stroke="#D95F00"
-        stroke-width="2.5"
+        stroke="#D85C00"
+        stroke-width="2"
         stroke-linecap="round"/>
 </svg>
+```
