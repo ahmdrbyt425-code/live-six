@@ -3,7 +3,7 @@
 /**
  * MiroTalk C2C - Server component
  *
- * https://live-six-hole.onrender.com Authentication
+ * Loki Live Authentication
  *
  * Features:
  * - Custom login page instead of browser Basic-Auth popup
@@ -104,7 +104,7 @@ const options = {
 const server = httpolyglot.createServer(options, app);
 
 // ============================================================
-// BASIC AUTH / https://live-six-hole.onrender.com AUTHENTICATION
+// BASIC AUTH / LOKI LIVE AUTHENTICATION
 // ============================================================
 
 const BASIC_AUTH_ENABLED = getEnvBoolean(
@@ -661,7 +661,7 @@ function sendLoginPage(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
-<title>https://live-six-hole.onrender.com - Login</title>
+<title>Loki Live - Login</title>
 
 <style>
 * {
@@ -790,7 +790,7 @@ button:disabled {
 
     <div class="logo">🥕</div>
 
-    <h1>https://live-six-hole.onrender.com</h1>
+    <h1>Loki Live</h1>
 
     <p class="subtitle">
         Sign in to continue
@@ -844,7 +844,7 @@ button:disabled {
     </form>
 
     <div class="footer">
-        https://live-six-hole.onrender.com
+        Loki Live
     </div>
 
 </div>
@@ -923,7 +923,7 @@ function basicAuth(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>https://live-six-hole.onrender.com - Access Blocked</title>
+<title>Loki Live - Access Blocked</title>
 <style>
 body{
     margin:0;
@@ -1113,7 +1113,7 @@ app.post(
             );
 
             log.info(
-                'Successful https://live-six-hole.onrender.com login',
+                'Successful Loki Live login',
                 {
                     ip,
                     username,
@@ -1138,7 +1138,7 @@ app.post(
             );
 
         log.warn(
-            'Failed https://live-six-hole.onrender.com login',
+            'Failed Loki Live login',
             {
                 ip,
                 username,
