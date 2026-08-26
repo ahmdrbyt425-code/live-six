@@ -816,7 +816,7 @@ button:disabled {
     </div>
 
     <h1>
-        Loki Live
+        The rabbit in the hole
     </h1>
 
     <p class="subtitle">
@@ -871,7 +871,7 @@ button:disabled {
     </form>
 
     <div class="footer">
-        Loki Live
+        https://live-six-hole.onrender.com
     </div>
 
 </div>
