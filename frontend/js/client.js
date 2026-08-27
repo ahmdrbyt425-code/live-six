@@ -2089,8 +2089,7 @@ function handleChatFileSharing() {
     }
 }
 
-
-
+function appendFileMessage(name, fileName, fileSize, fileType, fileData) {
     if (name !== peerName) showChat();
     const div = document.createElement('div');
     const span = document.createElement('span');
