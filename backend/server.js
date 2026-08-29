@@ -812,7 +812,7 @@ button:disabled {
 <div class="login-box">
 
     <div class="logo">
-        🥕
+        🐇
     </div>
 
     <h1>
