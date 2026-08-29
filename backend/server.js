@@ -812,11 +812,11 @@ button:disabled {
 <div class="login-box">
 
     <div class="logo">
-        🐇
+        😈
     </div>
 
     <h1>
-        The rabbit in the hole
+        Welcome to burrow
     </h1>
 
     <p class="subtitle">
@@ -871,7 +871,7 @@ button:disabled {
     </form>
 
     <div class="footer">
-        https://live-six-hole.onrender.com
+        The rabbit in the hole
     </div>
 
 </div>
