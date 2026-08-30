@@ -1,219 +1,1059 @@
 <!doctype html>
-<html lang="en">
-    <head>
-        <title>The rabbit in the hole</title>
+<html lang="ar" dir="rtl">
 
-        <meta charset="UTF-8" />
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-        <meta
-            name="viewport"
-            content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"
-        />
-        <meta
-            name="description"
-            content="The rabbit in the hole - face-to-face WebRTC real-time cam-2-cam video calls and screen sharing."
-        />
+<head>
 
-        <meta property="og:type" content="app-webrtc" />
-        <meta property="og:site_name" content="The rabbit in the hole" />
-        <meta property="og:title" content="Click the link to join this call." />
-        <meta property="og:description" content="Face-to-face WebRTC video calls." />
-        <meta property="og:image" content="../images/background.jpg" />
-        <meta property="og:url" content="https://onrender.com" />
+    <title>The rabbit in the hole</title>
 
-        <link rel="apple-touch-icon" href="../images/favicon.png" />
-        <link rel="icon" type="image/x-icon" href="../images/favicon.ico" />
+    <meta charset="UTF-8" />
 
-        <link rel="stylesheet" href="../css/home.css" />
-        <link rel="stylesheet" href="../css/common.css" />
+    <meta
+        http-equiv="X-UA-Compatible"
+        content="IE=edge"
+    />
 
-        <link
-            rel="stylesheet"
-            href="https://cloudflare.com"
-        />
+    <meta
+        name="viewport"
+        content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"
+    />
 
-        <script async src="../js/stats.js"></script>
+    <meta
+        name="description"
+        content="The rabbit in the hole - face-to-face WebRTC real-time cam-2-cam video calls and screen sharing."
+    />
 
-        <script
-            defer
-            src="https://jsdelivr.net"
-        ></script>
+    <meta
+        property="og:type"
+        content="app-webrtc"
+    />
 
-        <script
-            defer
-            src="https://jsdelivr.net"
-        ></script>
+    <meta
+        property="og:site_name"
+        content="The rabbit in the hole"
+    />
 
-        <script defer src="../js/storage.js"></script>
-        <script defer src="../js/home.js"></script>
-    </head>
+    <meta
+        property="og:title"
+        content="Click the link to join this call."
+    />
 
-    <body
-        style="
-            margin: 0;
-            min-height: 100vh;
-            background-image: url('../images/background.jpg');
-            background-size: cover;
-            background-position: center center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        "
+    <meta
+        property="og:description"
+        content="Face-to-face WebRTC video calls."
+    />
+
+    <meta
+        property="og:image"
+        content="../images/background.jpg"
+    />
+
+    <meta
+        property="og:url"
+        content="https://live-six-hole.onrender.com"
+    />
+
+    <link
+        rel="apple-touch-icon"
+        href="../images/favicon.png"
+    />
+
+    <link
+        rel="icon"
+        type="image/x-icon"
+        href="../images/favicon.ico"
+    />
+
+    <link
+        rel="stylesheet"
+        href="../css/home.css"
+    />
+
+    <link
+        rel="stylesheet"
+        href="../css/common.css"
+    />
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css"
+    />
+
+    <!-- Socket.IO -->
+    <script
+        src="/socket.io/socket.io.js"
+    ></script>
+
+    <script
+        async
+        src="../js/stats.js"
+    ></script>
+
+    <script
+        defer
+        src="https://cdn.jsdelivr.net/npm/xss/dist/xss.min.js"
+    ></script>
+
+    <script
+        defer
+        src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"
+    ></script>
+
+    <script
+        defer
+        src="../js/storage.js"
+    ></script>
+
+    <script
+        defer
+        src="../js/home.js"
+    ></script>
+
+    <style>
+
+        /* =====================================================
+           PUBLIC CHAT
+        ===================================================== */
+
+        #publicChatButton {
+
+            position: fixed;
+
+            left: 22px;
+            bottom: 22px;
+
+            width: 58px;
+            height: 58px;
+
+            border: 1px solid
+                rgba(255,255,255,.25);
+
+            border-radius: 50%;
+
+            background:
+                rgba(15,15,20,.55);
+
+            color: #fff;
+
+            backdrop-filter:
+                blur(14px);
+
+            -webkit-backdrop-filter:
+                blur(14px);
+
+            box-shadow:
+                0 10px 35px
+                rgba(0,0,0,.35);
+
+            cursor: pointer;
+
+            z-index: 9998;
+
+            transition:
+                transform .2s ease,
+                background .2s ease;
+
+        }
+
+        #publicChatButton:hover {
+
+            transform:
+                scale(1.08);
+
+            background:
+                rgba(255,255,255,.18);
+
+        }
+
+        #publicChatButton i {
+
+            font-size: 22px;
+
+        }
+
+        #publicChatBadge {
+
+            position: absolute;
+
+            top: -4px;
+            right: -4px;
+
+            min-width: 20px;
+            height: 20px;
+
+            padding: 0 5px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            border-radius: 50%;
+
+            background:
+                #ff3b5c;
+
+            color: #fff;
+
+            font-size: 10px;
+            font-weight: bold;
+
+            border:
+                2px solid
+                rgba(20,20,25,.8);
+
+        }
+
+
+        #publicChat {
+
+            position: fixed;
+
+            left: 22px;
+            bottom: 22px;
+
+            width: 370px;
+            height: 520px;
+
+            display: flex;
+            flex-direction: column;
+
+            overflow: hidden;
+
+            border:
+                1px solid
+                rgba(255,255,255,.20);
+
+            border-radius: 20px;
+
+            background:
+                rgba(10,12,18,.48);
+
+            color: #fff;
+
+            backdrop-filter:
+                blur(22px)
+                saturate(150%);
+
+            -webkit-backdrop-filter:
+                blur(22px)
+                saturate(150%);
+
+            box-shadow:
+                0 25px 70px
+                rgba(0,0,0,.45);
+
+            z-index: 9999;
+
+            transition:
+                width .25s ease,
+                height .25s ease,
+                opacity .2s ease,
+                transform .25s ease;
+
+        }
+
+
+        #publicChat.hidden {
+
+            display: none;
+
+        }
+
+
+        #publicChat.minimized {
+
+            height: 58px;
+
+        }
+
+
+        #publicChat.expanded {
+
+            width: min(
+                700px,
+                calc(100vw - 30px)
+            );
+
+            height: min(
+                800px,
+                calc(100vh - 30px)
+            );
+
+            left: 50%;
+            bottom: 50%;
+
+            transform:
+                translate(-50%, 50%);
+
+        }
+
+
+        .public-chat-header {
+
+            height: 58px;
+
+            min-height: 58px;
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 10px;
+
+            padding:
+                0 14px;
+
+            border-bottom:
+                1px solid
+                rgba(255,255,255,.10);
+
+            background:
+                rgba(255,255,255,.05);
+
+            user-select: none;
+
+        }
+
+
+        .public-chat-title {
+
+            flex: 1;
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 9px;
+
+            font-size: 15px;
+
+            font-weight: 700;
+
+            overflow: hidden;
+
+        }
+
+
+        .public-chat-title i {
+
+            color:
+                #69f0ae;
+
+        }
+
+
+        #publicChatOnline {
+
+            font-size: 11px;
+
+            color:
+                rgba(255,255,255,.55);
+
+            font-weight: normal;
+
+        }
+
+
+        .public-chat-controls {
+
+            display: flex;
+
+            gap: 5px;
+
+            direction: ltr;
+
+        }
+
+
+        .public-chat-control {
+
+            width: 30px;
+            height: 30px;
+
+            border: 0;
+
+            border-radius: 8px;
+
+            background:
+                rgba(255,255,255,.08);
+
+            color: #fff;
+
+            cursor: pointer;
+
+            transition:
+                background .2s ease;
+
+        }
+
+
+        .public-chat-control:hover {
+
+            background:
+                rgba(255,255,255,.20);
+
+        }
+
+
+        .public-chat-close:hover {
+
+            background:
+                rgba(255,60,80,.55);
+
+        }
+
+
+        #publicChatMessages {
+
+            flex: 1;
+
+            min-height: 0;
+
+            overflow-y: auto;
+
+            padding: 15px;
+
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 10px;
+
+            direction: rtl;
+
+        }
+
+
+        #publicChatMessages::-webkit-scrollbar {
+
+            width: 5px;
+
+        }
+
+
+        #publicChatMessages::-webkit-scrollbar-thumb {
+
+            background:
+                rgba(255,255,255,.20);
+
+            border-radius: 20px;
+
+        }
+
+
+        .public-chat-message {
+
+            max-width: 88%;
+
+            padding:
+                9px 12px;
+
+            border-radius: 13px;
+
+            background:
+                rgba(255,255,255,.09);
+
+            border:
+                1px solid
+                rgba(255,255,255,.07);
+
+            align-self: flex-start;
+
+            direction: rtl;
+
+            word-break: break-word;
+
+        }
+
+
+        .public-chat-message.me {
+
+            align-self: flex-end;
+
+            background:
+                rgba(80,150,255,.25);
+
+            border-color:
+                rgba(100,170,255,.25);
+
+        }
+
+
+        .public-chat-name {
+
+            font-size: 11px;
+
+            color:
+                #8fc7ff;
+
+            margin-bottom: 3px;
+
+            font-weight: 700;
+
+        }
+
+
+        .public-chat-text {
+
+            font-size: 14px;
+
+            line-height: 1.5;
+
+            white-space: pre-wrap;
+
+        }
+
+
+        .public-chat-time {
+
+            margin-top: 4px;
+
+            font-size: 9px;
+
+            color:
+                rgba(255,255,255,.40);
+
+        }
+
+
+        .public-chat-system {
+
+            align-self: center;
+
+            color:
+                rgba(255,255,255,.40);
+
+            font-size: 11px;
+
+            text-align: center;
+
+            padding: 5px;
+
+        }
+
+
+        .public-chat-input-area {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 8px;
+
+            padding:
+                10px;
+
+            border-top:
+                1px solid
+                rgba(255,255,255,.10);
+
+            background:
+                rgba(0,0,0,.12);
+
+            direction: rtl;
+
+        }
+
+
+        #publicChatInput {
+
+            flex: 1;
+
+            min-width: 0;
+
+            height: 42px;
+
+            padding:
+                0 13px;
+
+            border:
+                1px solid
+                rgba(255,255,255,.15);
+
+            border-radius: 12px;
+
+            outline: none;
+
+            background:
+                rgba(255,255,255,.08);
+
+            color: #fff;
+
+            font-size: 14px;
+
+            direction: rtl;
+
+        }
+
+
+        #publicChatInput::placeholder {
+
+            color:
+                rgba(255,255,255,.45);
+
+        }
+
+
+        #publicChatInput:focus {
+
+            border-color:
+                rgba(120,180,255,.55);
+
+            background:
+                rgba(255,255,255,.11);
+
+        }
+
+
+        #publicChatSend {
+
+            width: 42px;
+            height: 42px;
+
+            flex-shrink: 0;
+
+            border: 0;
+
+            border-radius: 12px;
+
+            background:
+                #fff;
+
+            color:
+                #111;
+
+            cursor: pointer;
+
+            transition:
+                transform .15s ease;
+
+        }
+
+
+        #publicChatSend:hover {
+
+            transform:
+                scale(1.05);
+
+        }
+
+
+        #publicChatName {
+
+            display: none;
+
+        }
+
+
+        @media (max-width: 600px) {
+
+            #publicChat {
+
+                left: 10px;
+                right: 10px;
+
+                bottom: 10px;
+
+                width:
+                    calc(100vw - 20px);
+
+                height:
+                    min(520px, calc(100vh - 80px));
+
+            }
+
+            #publicChat.expanded {
+
+                left: 5px;
+                bottom: 50%;
+
+                width:
+                    calc(100vw - 10px);
+
+                height:
+                    calc(100vh - 20px);
+
+            }
+
+            #publicChatButton {
+
+                left: 15px;
+                bottom: 15px;
+
+            }
+
+        }
+
+    </style>
+
+</head>
+
+
+<body
+    style="
+        margin: 0;
+        min-height: 100vh;
+        background-image: url('../images/background.jpg');
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    "
+>
+
+
+    <!-- =====================================================
+         MAIN JOIN FORM
+    ====================================================== -->
+
+    <form
+        id="joinForm"
+        autocomplete="off"
+        class="join-form"
     >
 
-        <form id="joinForm" autocomplete="off" class="join-form">
+        <div class="form-header">
 
-            <div class="form-header">
-                <div class="form-logo">
-                    <img
-                        src="../images/logo.svg"
-                        alt="The rabbit in the hole"
-                    />
-                </div>
+            <div class="form-logo">
 
-                <h2>The rabbit in the hole</h2>
-                <p>face-to-face</p>
+                <img
+                    src="../images/logo.svg"
+                    alt="The rabbit in the hole"
+                />
+
             </div>
 
-            <div class="input-group">
-                <label for="roomIdInput">
-                    <i class="fas fa-door-open"></i>
-                    The room 
-                </label>
+            <h2>
+                The rabbit in the hole
+            </h2>
 
-                <div class="input-container">
-                    <input
-                        id="roomIdInput"
-                        type="text"
-                        name="room"
-                        placeholder="e.g. my-meeting"
-                        maxlength="36"
-                        required
-                    />
+            <p>
+                face-to-face
+            </p>
 
-                    <button
-                        type="button"
-                        id="randomRoomBtn"
-                        class="input-btn"
-                        title="Generate random room"
-                        aria-label="Generate Random Room"
-                    >
-                        <i class="fa fa-random"></i>
-                    </button>
-                </div>
-            </div>
+        </div>
 
-            <div class="input-group">
-                <label for="userNameInput">
-                    <i class="fas fa-user"></i>
-                     my name 
-                </label>
 
-                <div class="input-container">
-                    <input
-                        id="userNameInput"
-                        type="text"
-                        name="name"
-                        placeholder="Your display name"
-                        maxlength="36"
-                        required
-                    />
+        <div class="input-group">
 
-                    <button
-                        type="button"
-                        id="randomUserBtn"
-                        class="input-btn"
-                        title="Generate random user"
-                        aria-label="Generate Random User"
-                    >
-                        <i class="fa fa-random"></i>
-                    </button>
-                </div>
-            </div>
+            <label for="roomIdInput">
 
-            <div class="media-toggles">
+                <i class="fas fa-door-open"></i>
+
+                The room
+
+            </label>
+
+
+            <div class="input-container">
+
+                <input
+                    id="roomIdInput"
+                    type="text"
+                    name="room"
+                    placeholder="e.g. my-meeting"
+                    maxlength="36"
+                    required
+                />
+
 
                 <button
                     type="button"
-                    id="initAudioBtn"
-                    class="media-toggle-btn"
-                    title="Toggle microphone"
-                    aria-label="Toggle microphone"
-                    aria-pressed="true"
+                    id="randomRoomBtn"
+                    class="input-btn"
+                    title="Generate random room"
+                    aria-label="Generate Random Room"
                 >
-                    <i class="fas fa-microphone"></i>
-                    <span>Mic</span>
-                </button>
 
-                <button
-                    type="button"
-                    id="initVideoBtn"
-                    class="media-toggle-btn"
-                    title="Toggle camera"
-                    aria-label="Toggle camera"
-                    aria-pressed="true"
-                >
-                    <i class="fas fa-video"></i>
-                    <span>Cam</span>
+                    <i
+                        class="fa fa-random"
+                    ></i>
+
                 </button>
 
             </div>
 
-            <button
-                type="submit"
-                id="joinBtn"
-                class="join-button"
-            >
-                <i class="fas fa-video"></i>
-                <span>Grab the rabbit's tail</span>
-            </button>
+        </div>
 
-            <div class="form-divider">
-                <span>
-                    <a
-                        href="/privacy"
-                        class="privacy-link"
-                    >
-                        Follow officially
-                    </a>
-                </span>
+
+        <div class="input-group">
+
+            <label for="userNameInput">
+
+                <i class="fas fa-user"></i>
+
+                my name
+
+            </label>
+
+
+            <div class="input-container">
+
+                <input
+                    id="userNameInput"
+                    type="text"
+                    name="name"
+                    placeholder="Your display name"
+                    maxlength="36"
+                    required
+                />
+
+
+                <button
+                    type="button"
+                    id="randomUserBtn"
+                    class="input-btn"
+                    title="Generate random user"
+                    aria-label="Generate Random User"
+                >
+
+                    <i
+                        class="fa fa-random"
+                    ></i>
+
+                </button>
+
             </div>
 
+        </div>
+
+
+        <div class="media-toggles">
+
             <button
-                id="supportBtn"
-                class="support-btn"
                 type="button"
+                id="initAudioBtn"
+                class="media-toggle-btn"
+                title="Toggle microphone"
+                aria-label="Toggle microphone"
+                aria-pressed="true"
             >
-                &copy; https://onrender.com
+
+                <i
+                    class="fas fa-microphone"
+                ></i>
+
+                <span>
+                    Mic
+                </span>
+
             </button>
 
-        </form>
 
-        <!-- ========================================================= -->
-        <!-- 🌟 بداية كود الشات الزجاجي المحلي (مباشر وبدون وسيط) 🌟 -->
-        <!-- ========================================================= -->
+            <button
+                type="button"
+                id="initVideoBtn"
+                class="media-toggle-btn"
+                title="Toggle camera"
+                aria-label="Toggle camera"
+                aria-pressed="true"
+            >
 
-        <!-- 1. الزر العائم لفتح الشات (يظهر عند إخفاء الشات مؤقتاً) -->
-        <button id="toggle-chat-btn" onclick="togglePublicChat()" style="position: fixed; bottom: 20px; right: 20px; z-index: 10000; background: rgba(43, 108, 176, 0.85); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 20px; border-radius: 50px; font-weight: bold; cursor: pointer; box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.3); font-family: system-ui, -apple-system, sans-serif; direction: rtl; display: none; align-items: center; gap: 8px; transition: all 0.3s ease;">
-            💬 <span>إظهار الدردشة العامة</span>
+                <i
+                    class="fas fa-video"
+                ></i>
+
+                <span>
+                    Cam
+                </span>
+
+            </button>
+
+        </div>
+
+
+        <button
+            type="submit"
+            id="joinBtn"
+            class="join-button"
+        >
+
+            <i
+                class="fas fa-video"
+            ></i>
+
+            <span>
+                Rabbit♡in♡pit
+            </span>
+
         </button>
 
-        <!-- 2. صندوق الشات الزجاجي الشفاف -->
-        <div id="public-chat-box" style="position: fixed; bottom: 20px; right: 20px; width: 380px; height: 550px; max-width: 90vw; max-height: 85vh; z-index: 9999; box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2); border-radius: 16px; overflow: hidden; background: rgba(255, 255, 255, 0.45); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.25); font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
-            
-            <!-- شريط التحكم العلوي -->
-            <div style="background: rgba(26, 32, 44, 0.75); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); color: white; padding: 10px 15px; font-weight: bold; font-size: 14px; direction: rtl; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <span style="display: flex; align-items: center; gap: 6px;">💬 الدردشة العامة للموقع</span>
-                
-                <!-- أزرار التحكم بالنوافذ -->
-                <div style="display: flex; gap: 8px; direction: ltr;">
-                    <button type="button" onclick="maximizeChat()" title="ملء الشاشة" style="background: rgba(255,255,255,0.15); border: none; color: white; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: 0.2s;">🗖</button>
-                    <button type="button" onclick="minimizeChat()" title="إخفاء مؤقت" style="background: rgba(255,255,255,0.15); border: none; color: white; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: 0.2s;">—</button>
-                    <button type="button" onclick="closeChatCompletely()" title="إغلاق نهائي" style="background: rgba(229, 62, 62, 0.6); border: none; color: white; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: 0.2s;">✕</button>
-                </div>
+
+        <div class="form-divider">
+
+            <span>
+
+                <a
+                    href="/privacy"
+                    class="privacy-link"
+                >
+                    Follow officially
+                </a>
+
+            </span>
+
+        </div>
+
+
+        <button
+            id="supportBtn"
+            class="support-btn"
+            type="button"
+        >
+
+            &copy;
+            https://live-six-hole.onrender.com
+
+        </button>
+
+    </form>
+
+
+    <!-- =====================================================
+         PUBLIC CHAT OPEN BUTTON
+    ====================================================== -->
+
+    <button
+        id="publicChatButton"
+        type="button"
+        aria-label="فتح الدردشة العامة"
+        title="الدردشة العامة"
+    >
+
+        <i
+            class="fas fa-comments"
+        ></i>
+
+        <span
+            id="publicChatBadge"
+        >
+            0
+        </span>
+
+    </button>
+
+
+    <!-- =====================================================
+         PUBLIC CHAT WINDOW
+    ====================================================== -->
+
+    <section
+        id="publicChat"
+        class="hidden"
+        aria-label="الدردشة العامة"
+    >
+
+
+        <header
+            class="public-chat-header"
+        >
+
+            <div
+                class="public-chat-title"
+            >
+
+                <i
+                    class="fas fa-circle"
+                    style="
+                        font-size:8px;
+                    "
+                ></i>
+
+                <span>
+                    الدردشة العامة
+                </span>
+
+                <span
+                    id="publicChatOnline"
+                >
+                    0 متصل
+                </span>
+
             </div>
-            
-            <!-- منطقة عرض الرسائل المستلمة -->
-            <div id="chat-messages" style="flex-grow: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 14px; direction: rtl; background: transparent;"></div>
-            
-            <!-- منطقة إدخال وإرسال الرسائل -->
-            <div style="padding: 10px; display: flex; gap: 8px; background: rgba(255,255,255,0.2); border-top: 1px solid rgba(255,255,255,0.1); direction: rtl;">
+
+
+            <div
+                class="public-chat-controls"
+            >
+
+                <button
+                    id="publicChatMinimize"
+                    class="public-chat-control"
+                    type="button"
+                    title="تصغير"
+                    aria-label="تصغير"
+                >
+                    <i
+                        class="fas fa-minus"
+                    ></i>
+                </button>
+
+
+                <button
+                    id="publicChatExpand"
+                    class="public-chat-control"
+                    type="button"
+                    title="تكبير"
+                    aria-label="تكبير"
+                >
+                    <i
+                        class="fas fa-expand"
+                    ></i>
+                </button>
+
+
+                <button
+                    id="publicChatClose"
+                    class="public-chat-control public-chat-close"
+                    type="button"
+                    title="إغلاق"
+                    aria-label="إغلاق"
+                >
+                    <i
+                        class="fas fa-xmark"
+                    ></i>
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <div
+            id="publicChatMessages"
+        ></div>
+
+
+        <div
+            class="public-chat-input-area"
+        >
+
+            <input
+                id="publicChatInput"
+                type="text"
+                maxlength="500"
+                autocomplete="off"
+                placeholder="اكتب رسالتك..."
+            />
+
+
+            <button
+                id="publicChatSend"
+                type="button"
+                title="إرسال"
+                aria-label="إرسال"
+            >
+
+                <i
+                    class="fas fa-paper-plane"
+                ></i>
+
+            </button>
+
+        </div>
+
+    </section>
+
+
+</body>
+
+</html>
