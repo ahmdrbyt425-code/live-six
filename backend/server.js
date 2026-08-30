@@ -401,35 +401,14 @@ function verifyAuthCookie(
 // COOKIE READER
 // ============================================================
 
-function getCookie(
-    req,
-    cookieName
-) {
-    const cookieHeader =
-        req.headers.cookie;
-
-    if (!cookieHeader) {
-        return null;
+function getCookie(req, cookieName) {
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader) return null;
+    const cookies = cookieHeader.split(';');
+    for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === cookieName) return value;
     }
-
-    const cookies =
-        cookieHeader.split(';');
-
-    for (
-        let cookie of cookies
-    ) {
-        const [name, value] =
-            cookie
-                .trim()
-                .split('=');
-
-        if (
-            name === cookieName
-        ) {
-            return value;
-        }
-    }
-
     return null;
 }
 
