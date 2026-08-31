@@ -85,17 +85,17 @@ const CONFIG = {
     username:
         process.env.ADMIN_CONTROL_USERNAME ||
         process.env.BASIC_AUTH_USERNAME ||
-        '',
+        'admin',
 
     password:
         process.env.ADMIN_CONTROL_PASSWORD ||
         process.env.BASIC_AUTH_PASSWORD ||
-        '',
+        'admin',
 
     secret:
         process.env.ADMIN_CONTROL_SECRET ||
         process.env.BASIC_AUTH_SECRET ||
-        'CHANGE_ADMIN_CONTROL_SECRET',
+        ' Matrix Docker Ansible',
 
 };
 
