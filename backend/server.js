@@ -1,1143 +1,257 @@
 'use strict';
 
-/**
- * ============================================================
- * LOKI LIVE / MIROTALK C2C SERVER
- * ============================================================
- *
- * يحتوي هذا الملف على:
- *
- * 1. WebRTC rooms
- * 2. Socket.IO signaling
- * 3. Basic Authentication
- * 4. OIDC
- * 5. CORS
- * 6. Swagger API
- * 7. STUN / TURN
- * 8. Ngrok
- * 9. Mattermost
- * 10. Global Public Chat
- *
- * ============================================================
- *
- * GLOBAL PUBLIC CHAT
- *
- * الدردشة العامة ليست مرتبطة بالغرف.
- *
- * Events:
- *
- * client -> server:
- *
- *   globalChatSend
- *
- * server -> client:
- *
- *   globalChatHistory
- *   globalChatMessage
- *   globalChatSystem
- *
- * ============================================================
- */
+/*
+============================================================
+ THE RABBIT IN THE HOLE
+ MASTER ADMIN CONTROL
+============================================================
 
-require('dotenv').config();
+ Default login:
+ Username: admin
+ Password: admin
+
+ Optional environment variables:
+ ADMIN_CONTROL_USERNAME
+ ADMIN_CONTROL_PASSWORD
+ ADMIN_CONTROL_SECRET
+
+ This file does NOT require:
+ - admin.html
+ - admin.css
+ - admin.js
+ - settings.json
+============================================================
+*/
 
 const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
 
-const {
-    auth,
-    requiresAuth,
-} = require('express-openid-connect');
 
-const {
-    Server,
-} = require('socket.io');
+/*
+============================================================
+ CONFIGURATION
+============================================================
+*/
 
-const httpolyglot =
-    require('httpolyglot');
+const CONFIG = {
 
-const compression =
-    require('compression');
+    adminPath:
+        '/rabbit-control',
 
-const express =
-    require('express');
-const rabbitControl =
-    require('./admin-control.js');
-const cors =
-    require('cors');
+    username:
+        process.env.ADMIN_CONTROL_USERNAME ||
+        'admin',
 
-const helmet =
-    require('helmet');
+    password:
+        process.env.ADMIN_CONTROL_PASSWORD ||
+        'admin',
 
-const checkXSS =
-    require('./xss.js');
+    secret:
+        process.env.ADMIN_CONTROL_SECRET ||
+        'rabbit-control-secret-change-this',
 
-const ngrok =
-    require('@ngrok/ngrok');
+};
 
-const logs =
-    require('./logs');
 
-const ServerApi =
-    require('./api');
+/*
+============================================================
+ DEFAULT SITE SETTINGS
+============================================================
+*/
 
-const mattermostCli =
-    require('./mattermost');
+const DEFAULTS = {
 
-const sentry =
-    require('./sentry');
+    siteName:
+        'The rabbit in the hole',
 
-const {
-    applyEmbedHeaders,
-    embedAllowedOrigins,
-    embedCsp,
-} = require('./embedHeaders');
+    title:
+        'The rabbit in the hole',
 
-const yaml =
-    require('js-yaml');
+    description:
+        '',
 
-const swaggerUi =
-    require('swagger-ui-express');
+    favicon:
+        '',
 
-const nodemailer =
-    require('./lib/nodemailer');
+    language:
+        'en',
 
-const app =
-    express();
+    direction:
+        'ltr',
 
-const log =
-    new logs('server');
-
-/* ============================================================
-   SENTRY
-============================================================ */
-
-sentry.start();
-
-/* ============================================================
-   SWAGGER
-============================================================ */
-
-const swaggerDocument =
-    yaml.load(
-        fs.readFileSync(
-            path.join(
-                __dirname,
-                '/api/swagger.yaml'
-            ),
-            'utf8'
-        )
-    );
-
-/* ============================================================
-   CONSTANTS
-============================================================ */
-
-const queryJoin =
-    '/join?room=test&name=test';
-
-const queryRoom =
-    '/?room=test';
-
-const packageJson =
-    require('../package.json');
-
-/* ============================================================
-   SSL
-============================================================ */
-
-const keyPath =
-    path.join(
-        __dirname,
-        'ssl/key.pem'
-    );
-
-const certPath =
-    path.join(
-        __dirname,
-        'ssl/cert.pem'
-    );
-
-let sslOptions = null;
-
-try {
-    sslOptions = {
-        key:
-            fs.readFileSync(
-                keyPath,
-                'utf8'
-            ),
-
-        cert:
-            fs.readFileSync(
-                certPath,
-                'utf8'
-            ),
-    };
-} catch (error) {
-    log.warn(
-        'SSL certificate files could not be loaded.',
-        error.message
-    );
 
     /*
-     * Render/proxies may terminate HTTPS
-     * before reaching Node.
-     */
-    sslOptions = null;
-}
+    COLORS
+    */
 
-/* ============================================================
-   HTTP / HTTPS SERVER
-============================================================ */
+    primaryColor:
+        '#a3ff12',
 
-const server =
-    sslOptions
-        ? httpolyglot.createServer(
-              sslOptions,
-              app
-          )
-        : require('http').createServer(
-              app
-          );
+    secondaryColor:
+        '#7cff00',
 
-/* ============================================================
-   BASIC AUTH
-============================================================ */
+    backgroundColor:
+        '#090b0d',
 
-const BASIC_AUTH_ENABLED =
-    getEnvBoolean(
-        process.env.BASIC_AUTH_ENABLED
-    );
+    textColor:
+        '#ffffff',
 
-const BASIC_AUTH_USERNAME =
-    process.env.BASIC_AUTH_USERNAME ||
-    '';
 
-const BASIC_AUTH_PASSWORD =
-    process.env.BASIC_AUTH_PASSWORD ||
-    '';
+    /*
+    BACKGROUND
+    */
 
-const BASIC_AUTH_SECRET =
-    process.env.BASIC_AUTH_SECRET ||
-    'CHANGE_THIS_SECRET_IN_RENDER';
+    backgroundEnabled:
+        true,
 
-const BASIC_AUTH_COOKIE =
-    'loki_live_auth';
+    backgroundType:
+        'auto',
 
-const MAX_LOGIN_ATTEMPTS =
-    10;
+    backgroundUrl:
+        '',
 
-const BASIC_AUTH_BLOCK_DURATION_MS =
-    Number(
-        process.env.BASIC_AUTH_BLOCK_DURATION_MS ||
-        86400000
-    );
+    backgroundSize:
+        'cover',
 
-const BASIC_AUTH_SESSION_MS =
-    Number(
-        process.env.BASIC_AUTH_SESSION_MS ||
-        86400000
-    );
+    backgroundPosition:
+        'center',
 
-const loginSecurity =
+    backgroundRepeat:
+        'no-repeat',
+
+    backgroundAttachment:
+        'fixed',
+
+    backgroundOverlay:
+        '0.15',
+
+
+    /*
+    TYPOGRAPHY
+    */
+
+    fontFamily:
+        'Arial, Helvetica, sans-serif',
+
+    fontSize:
+        '',
+
+
+    /*
+    INTERFACE
+    */
+
+    hideLogo:
+        false,
+
+    hideSiteName:
+        false,
+
+    hideFooter:
+        false,
+
+    hideHomeButton:
+        false,
+
+    hideChat:
+        false,
+
+    hideVideo:
+        false,
+
+
+    /*
+    CUSTOM CODE
+    */
+
+    customCSS:
+        '',
+
+    customJS:
+        '',
+
+    headHTML:
+        '',
+
+    bodyStartHTML:
+        '',
+
+    bodyEndHTML:
+        '',
+
+
+    /*
+    META
+    */
+
+    robots:
+        'index,follow',
+
+    themeColor:
+        '#090b0d',
+
+};
+
+
+/*
+============================================================
+ LIVE SITE CONFIGURATION
+============================================================
+*/
+
+let SITE = {
+    ...DEFAULTS,
+};
+
+
+/*
+============================================================
+ SESSION STORAGE
+============================================================
+*/
+
+const ADMIN_COOKIE =
+    'rabbit_control_session';
+
+
+const sessions =
     new Map();
 
-if (
-    BASIC_AUTH_ENABLED &&
-    (
-        !BASIC_AUTH_USERNAME ||
-        !BASIC_AUTH_PASSWORD
-    )
+
+/*
+============================================================
+ UTILITY FUNCTIONS
+============================================================
+*/
+
+function safeString(
+    value,
+    max = 100000
 ) {
-    log.error(
-        'BASIC_AUTH_ENABLED=true but BASIC_AUTH_USERNAME or BASIC_AUTH_PASSWORD is missing'
-    );
-
-    process.exit(1);
-}
-
-if (
-    BASIC_AUTH_ENABLED &&
-    BASIC_AUTH_SECRET ===
-        'CHANGE_THIS_SECRET_IN_RENDER'
-) {
-    log.warn(
-        'WARNING: BASIC_AUTH_SECRET is using the default value. Change it in Render!'
-    );
-}
-
-/* ============================================================
-   GLOBAL PUBLIC CHAT
-   ============================================================ */
-
-/*
- * عدد الرسائل التي نحفظها.
- */
-const GLOBAL_CHAT_MAX_MESSAGES =
-    Math.max(
-        10,
-        Number(
-            process.env.GLOBAL_CHAT_MAX_MESSAGES ||
-            100
-        )
-    );
-
-/*
- * الحد الأقصى لطول الاسم.
- */
-const GLOBAL_CHAT_MAX_NAME_LENGTH =
-    Math.max(
-        3,
-        Math.min(
-            50,
-            Number(
-                process.env.GLOBAL_CHAT_MAX_NAME_LENGTH ||
-                36
-            )
-        )
-    );
-
-/*
- * الحد الأقصى لطول الرسالة.
- */
-const GLOBAL_CHAT_MAX_MESSAGE_LENGTH =
-    Math.max(
-        50,
-        Math.min(
-            2000,
-            Number(
-                process.env.GLOBAL_CHAT_MAX_MESSAGE_LENGTH ||
-                500
-            )
-        )
-    );
-
-/*
- * ملف حفظ الدردشة العامة.
- */
-const globalChatFile =
-    path.join(
-        __dirname,
-        'global-chat.json'
-    );
-
-/*
- * تخزين الرسائل في الذاكرة.
- */
-let globalChatMessages = [];
-
-/*
- * إنشاء ملف الدردشة إذا لم يكن موجوداً.
- */
-function ensureGlobalChatFile() {
-    try {
-        const dir =
-            path.dirname(
-                globalChatFile
-            );
-
-        if (
-            !fs.existsSync(dir)
-        ) {
-            fs.mkdirSync(
-                dir,
-                {
-                    recursive: true,
-                }
-            );
-        }
-
-        if (
-            !fs.existsSync(
-                globalChatFile
-            )
-        ) {
-            fs.writeFileSync(
-                globalChatFile,
-                '[]',
-                'utf8'
-            );
-        }
-    } catch (error) {
-        log.error(
-            'Unable to create global chat file',
-            error
-        );
-    }
-}
-
-/*
- * تحميل الرسائل القديمة.
- */
-function loadGlobalChat() {
-    ensureGlobalChatFile();
-
-    try {
-        const raw =
-            fs.readFileSync(
-                globalChatFile,
-                'utf8'
-            );
-
-        const parsed =
-            JSON.parse(raw);
-
-        if (
-            Array.isArray(parsed)
-        ) {
-            globalChatMessages =
-                parsed
-                    .filter(
-                        isValidChatMessage
-                    )
-                    .slice(
-                        -GLOBAL_CHAT_MAX_MESSAGES
-                    );
-        } else {
-            globalChatMessages = [];
-        }
-
-        log.info(
-            `Global chat loaded: ${globalChatMessages.length} messages`
-        );
-    } catch (error) {
-        globalChatMessages = [];
-
-        log.warn(
-            'Could not load global chat history',
-            error.message
-        );
-    }
-}
-
-/*
- * فحص رسالة محفوظة.
- */
-function isValidChatMessage(
-    message
-) {
-    if (
-        !message ||
-        typeof message !==
-            'object'
-    ) {
-        return false;
-    }
-
-    return (
-        typeof message.id ===
-            'string' &&
-        typeof message.name ===
-            'string' &&
-        typeof message.message ===
-            'string' &&
-        typeof message.timestamp ===
-            'number'
-    );
-}
-
-/*
- * حفظ الدردشة.
- */
-function saveGlobalChat() {
-    try {
-        ensureGlobalChatFile();
-
-        fs.writeFileSync(
-            globalChatFile,
-            JSON.stringify(
-                globalChatMessages,
-                null,
-                2
-            ),
-            'utf8'
-        );
-    } catch (error) {
-        log.error(
-            'Could not save global chat',
-            error
-        );
-    }
-}
-
-/*
- * تنظيف اسم المستخدم.
- */
-function sanitizeChatName(
-    value
-) {
-    let name =
-        typeof value ===
-            'string'
-            ? value
-            : '';
-
-    name =
-        name
-            .replace(
-                /\s+/g,
-                ' '
-            )
-            .trim();
-
-    name =
-        checkXSS(name);
 
     if (
-        !name
+        typeof value !==
+        'string'
     ) {
-        name =
-            'زائر';
+        return '';
     }
 
-    return name.substring(
+    return value.substring(
         0,
-        GLOBAL_CHAT_MAX_NAME_LENGTH
+        max
     );
 }
 
-/*
- * تنظيف الرسالة.
- */
-function sanitizeChatMessage(
-    value
-) {
-    let message =
-        typeof value ===
-            'string'
-            ? value
-            : '';
-
-    /*
-     * إزالة null characters.
-     */
-    message =
-        message.replace(
-            /\0/g,
-            ''
-        );
-
-    /*
-     * توحيد الأسطر.
-     */
-    message =
-        message.replace(
-            /\r\n/g,
-            '\n'
-        );
-
-    message =
-        message.trim();
-
-    /*
-     * XSS filter.
-     */
-    message =
-        checkXSS(message);
-
-    /*
-     * منع HTML الناتج.
-     */
-    message =
-        message
-            .replace(
-                /<script[\s\S]*?>[\s\S]*?<\/script>/gi,
-                ''
-            );
-
-    return message.substring(
-        0,
-        GLOBAL_CHAT_MAX_MESSAGE_LENGTH
-    );
-}
-
-/*
- * إنشاء ID للرسالة.
- */
-function createChatMessageId() {
-    return (
-        Date.now().toString(36) +
-        '-' +
-        crypto
-            .randomBytes(8)
-            .toString('hex')
-    );
-}
-
-/*
- * إضافة رسالة للدردشة.
- */
-function addGlobalChatMessage(
-    name,
-    message
-) {
-    const chatMessage = {
-        id:
-            createChatMessageId(),
-
-        name:
-            sanitizeChatName(
-                name
-            ),
-
-        message:
-            sanitizeChatMessage(
-                message
-            ),
-
-        timestamp:
-            Date.now(),
-    };
-
-    if (
-        !chatMessage.message
-    ) {
-        return null;
-    }
-
-    globalChatMessages.push(
-        chatMessage
-    );
-
-    if (
-        globalChatMessages.length >
-        GLOBAL_CHAT_MAX_MESSAGES
-    ) {
-        globalChatMessages =
-            globalChatMessages.slice(
-                -GLOBAL_CHAT_MAX_MESSAGES
-            );
-    }
-
-    saveGlobalChat();
-
-    return chatMessage;
-}
-
-/*
- * تحميل الدردشة عند تشغيل السيرفر.
- */
-loadGlobalChat();
-
-/* ============================================================
-   CLIENT IP
-============================================================ */
-
-function getClientIp(
-    req
-) {
-    const forwarded =
-        req.headers[
-            'x-forwarded-for'
-        ];
-
-    if (
-        forwarded
-    ) {
-        const firstIp =
-            String(
-                forwarded
-            )
-                .split(',')[0]
-                .trim();
-
-        if (
-            firstIp
-        ) {
-            return firstIp;
-        }
-    }
-
-    return (
-        req.ip ||
-        req.socket?.remoteAddress ||
-        'unknown'
-    );
-}
-
-/* ============================================================
-   SOCKET CLIENT IP
-============================================================ */
-
-function getSocketIp(
-    socket
-) {
-    const headers =
-        socket.handshake
-            ?.headers || {};
-
-    const forwarded =
-        headers[
-            'x-forwarded-for'
-        ];
-
-    if (
-        forwarded
-    ) {
-        return String(
-            forwarded
-        )
-            .split(',')[0]
-            .trim();
-    }
-
-    return (
-        socket.handshake?.address ||
-        'unknown'
-    );
-}
-
-/* ============================================================
-   SECURITY STORE
-============================================================ */
-
-function getSecurityRecord(
-    ip
-) {
-    let record =
-        loginSecurity.get(
-            ip
-        );
-
-    if (
-        !record
-    ) {
-        record = {
-            attempts: 0,
-            blockedUntil: 0,
-        };
-
-        loginSecurity.set(
-            ip,
-            record
-        );
-    }
-
-    return record;
-}
-
-function isIpBlocked(
-    ip
-) {
-    const record =
-        loginSecurity.get(
-            ip
-        );
-
-    if (
-        !record
-    ) {
-        return false;
-    }
-
-    if (
-        record.blockedUntil &&
-        Date.now() <
-            record.blockedUntil
-    ) {
-        return true;
-    }
-
-    if (
-        record.blockedUntil &&
-        Date.now() >=
-            record.blockedUntil
-    ) {
-        loginSecurity.delete(
-            ip
-        );
-
-        return false;
-    }
-
-    return false;
-}
-
-function registerFailedLogin(
-    ip
-) {
-    const record =
-        getSecurityRecord(
-            ip
-        );
-
-    record.attempts += 1;
-
-    if (
-        record.attempts >=
-        MAX_LOGIN_ATTEMPTS
-    ) {
-        record.blockedUntil =
-            Date.now() +
-            BASIC_AUTH_BLOCK_DURATION_MS;
-
-        loginSecurity.set(
-            ip,
-            record
-        );
-
-        log.warn(
-            'IP BLOCKED AFTER 10 FAILED LOGIN ATTEMPTS',
-            {
-                ip,
-                attempts:
-                    record.attempts,
-                blockedUntil:
-                    new Date(
-                        record.blockedUntil
-                    ).toISOString(),
-            }
-        );
-
-        return {
-            blocked: true,
-            attempts:
-                record.attempts,
-        };
-    }
-
-    loginSecurity.set(
-        ip,
-        record
-    );
-
-    return {
-        blocked: false,
-        attempts:
-            record.attempts,
-    };
-}
-
-function resetLoginAttempts(
-    ip
-) {
-    loginSecurity.delete(
-        ip
-    );
-}
-
-/* ============================================================
-   AUTH SIGNATURE
-============================================================ */
-
-function createAuthSignature(
-    timestamp
-) {
-    return crypto
-        .createHmac(
-            'sha256',
-            BASIC_AUTH_SECRET
-        )
-        .update(
-            String(timestamp)
-        )
-        .digest('hex');
-}
-
-/* ============================================================
-   AUTH COOKIE
-============================================================ */
-
-function createAuthCookie() {
-    const timestamp =
-        Date.now();
-
-    const signature =
-        createAuthSignature(
-            timestamp
-        );
-
-    return (
-        `${timestamp}.${signature}`
-    );
-}
-
-function verifyAuthCookie(
-    cookieValue
-) {
-    if (
-        !cookieValue
-    ) {
-        return false;
-    }
-
-    const parts =
-        String(
-            cookieValue
-        ).split('.');
-
-    if (
-        parts.length !== 2
-    ) {
-        return false;
-    }
-
-    const timestamp =
-        Number(
-            parts[0]
-        );
-
-    const signature =
-        parts[1];
-
-    if (
-        !Number.isFinite(
-            timestamp
-        ) ||
-        !signature
-    ) {
-        return false;
-    }
-
-    const age =
-        Date.now() -
-        timestamp;
-
-    if (
-        age >
-            BASIC_AUTH_SESSION_MS ||
-        age < 0
-    ) {
-        return false;
-    }
-
-    const expectedSignature =
-        createAuthSignature(
-            timestamp
-        );
-
-    try {
-        const signatureBuffer =
-            Buffer.from(
-                signature
-            );
-
-        const expectedBuffer =
-            Buffer.from(
-                expectedSignature
-            );
-
-        if (
-            signatureBuffer.length !==
-            expectedBuffer.length
-        ) {
-            return false;
-        }
-
-        return crypto.timingSafeEqual(
-            signatureBuffer,
-            expectedBuffer
-        );
-    } catch {
-        return false;
-    }
-}
-
-/* ============================================================
-   COOKIE READER
-============================================================ */
-
-function getCookie(
-    req,
-    cookieName
-) {
-    const cookieHeader =
-        req.headers.cookie;
-
-    if (
-        !cookieHeader
-    ) {
-        return null;
-    }
-
-    const cookies =
-        cookieHeader.split(';');
-
-    for (
-        const cookie of cookies
-    ) {
-        const separator =
-            cookie.indexOf('=');
-
-        if (
-            separator === -1
-        ) {
-            continue;
-        }
-
-        const name =
-            cookie
-                .substring(
-                    0,
-                    separator
-                )
-                .trim();
-
-        const value =
-            cookie
-                .substring(
-                    separator + 1
-                )
-                .trim();
-
-        if (
-            name ===
-            cookieName
-        ) {
-            try {
-                return decodeURIComponent(
-                    value
-                );
-            } catch {
-                return value;
-            }
-        }
-    }
-
-    return null;
-}
-
-/* ============================================================
-   PASSWORD COMPARISON
-============================================================ */
-
-function safeStringEqual(
-    a,
-    b
-) {
-    if (
-        typeof a !== 'string' ||
-        typeof b !== 'string'
-    ) {
-        return false;
-    }
-
-    const aBuffer =
-        Buffer.from(a);
-
-    const bBuffer =
-        Buffer.from(b);
-
-    if (
-        aBuffer.length !==
-        bBuffer.length
-    ) {
-        return false;
-    }
-
-    try {
-        return crypto.timingSafeEqual(
-            aBuffer,
-            bBuffer
-        );
-    } catch {
-        return false;
-    }
-}
-
-function checkLoginCredentials(
-    username,
-    password
-) {
-    return (
-        safeStringEqual(
-            username,
-            BASIC_AUTH_USERNAME
-        ) &&
-        safeStringEqual(
-            password,
-            BASIC_AUTH_PASSWORD
-        )
-    );
-}
-
-/* ============================================================
-   HTTP AUTH CHECK
-============================================================ */
-
-function isHttpAuthenticated(
-    req
-) {
-    if (
-        !BASIC_AUTH_ENABLED
-    ) {
-        return true;
-    }
-
-    const cookie =
-        getCookie(
-            req,
-            BASIC_AUTH_COOKIE
-        );
-
-    return verifyAuthCookie(
-        cookie
-    );
-}
-
-/* ============================================================
-   AUTH COOKIE
-============================================================ */
-
-function setAuthCookie(
-    res,
-    req
-) {
-    const value =
-        createAuthCookie();
-
-    const isHttps =
-        req.secure ||
-        req.headers[
-            'x-forwarded-proto'
-        ] === 'https';
-
-    const secure =
-        isHttps
-            ? '; Secure'
-            : '';
-
-    res.setHeader(
-        'Set-Cookie',
-        `${BASIC_AUTH_COOKIE}=${encodeURIComponent(
-            value
-        )}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
-            BASIC_AUTH_SESSION_MS / 1000
-        )}${secure}`
-    );
-}
-
-function clearAuthCookie(
-    res,
-    req
-) {
-    const isHttps =
-        req.secure ||
-        req.headers[
-            'x-forwarded-proto'
-        ] === 'https';
-
-    const secure =
-        isHttps
-            ? '; Secure'
-            : '';
-
-    res.setHeader(
-        'Set-Cookie',
-        `${BASIC_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
-    );
-}
-
-/* ============================================================
-   HTML ESCAPE
-============================================================ */
 
 function escapeHtml(
     value
 ) {
-    return String(value)
+
+    return String(
+        value === undefined ||
+        value === null
+            ? ''
+            : value
+    )
         .replace(
             /&/g,
             '&amp;'
@@ -1160,2954 +274,3885 @@ function escapeHtml(
         );
 }
 
-/* ============================================================
-   LOGIN PAGE
-============================================================ */
 
-function sendLoginPage(
-    res,
-    message = ''
+function safeColor(
+    value,
+    fallback
 ) {
-    const safeMessage =
-        escapeHtml(
-            message
+
+    if (
+        typeof value !==
+        'string'
+    ) {
+        return fallback;
+    }
+
+    if (
+        /^#[0-9a-fA-F]{3,8}$/
+            .test(value)
+    ) {
+        return value;
+    }
+
+    if (
+        /^rgba?\([^)]+\)$/
+            .test(value)
+    ) {
+        return value;
+    }
+
+    return fallback;
+}
+
+
+function getCookies(
+    req
+) {
+
+    const header =
+        req.headers.cookie || '';
+
+    const result = {};
+
+    header
+        .split(';')
+        .forEach(
+            item => {
+
+                const index =
+                    item.indexOf('=');
+
+                if (
+                    index === -1
+                ) {
+                    return;
+                }
+
+                const name =
+                    item
+                        .substring(
+                            0,
+                            index
+                        )
+                        .trim();
+
+                const value =
+                    item
+                        .substring(
+                            index + 1
+                        )
+                        .trim();
+
+                try {
+
+                    result[name] =
+                        decodeURIComponent(
+                            value
+                        );
+
+                } catch {
+
+                    result[name] =
+                        value;
+
+                }
+
+            }
         );
 
-    return res
-        .status(200)
-        .send(
-            `<!DOCTYPE html>
+    return result;
+}
+
+
+/*
+============================================================
+ SAFE TIMING COMPARISON
+============================================================
+*/
+
+function safeCompare(
+    a,
+    b
+) {
+
+    const A =
+        Buffer.from(
+            String(a)
+        );
+
+    const B =
+        Buffer.from(
+            String(b)
+        );
+
+    if (
+        A.length !==
+        B.length
+    ) {
+        return false;
+    }
+
+    return crypto.timingSafeEqual(
+        A,
+        B
+    );
+}
+
+
+/*
+============================================================
+ LOGIN VERIFICATION
+============================================================
+*/
+
+function verifyLogin(
+    username,
+    password
+) {
+
+    return (
+        safeCompare(
+            username,
+            CONFIG.username
+        ) &&
+        safeCompare(
+            password,
+            CONFIG.password
+        )
+    );
+
+}
+
+
+/*
+============================================================
+ SESSION
+============================================================
+*/
+
+function createSession() {
+
+    const token =
+        crypto
+            .randomBytes(48)
+            .toString('hex');
+
+    sessions.set(
+        token,
+        Date.now() +
+            24 * 60 * 60 * 1000
+    );
+
+    return token;
+}
+
+
+function isAuthenticated(
+    req
+) {
+
+    const cookies =
+        getCookies(req);
+
+    const token =
+        cookies[
+            ADMIN_COOKIE
+        ];
+
+    if (!token) {
+        return false;
+    }
+
+    const expires =
+        sessions.get(token);
+
+    if (!expires) {
+        return false;
+    }
+
+    if (
+        Date.now() >
+        expires
+    ) {
+
+        sessions.delete(
+            token
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
+
+/*
+============================================================
+ LOGIN PAGE
+============================================================
+*/
+
+function loginPage() {
+
+    return `<!DOCTYPE html>
+
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="robots" content="noindex,nofollow">
-<title>Loki Live - Login</title>
+
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1.0"
+>
+
+<meta
+    name="robots"
+    content="noindex,nofollow"
+>
+
+<title>Rabbit Control</title>
+
 <style>
+
 * {
     box-sizing:border-box;
 }
 
 html,
 body {
+
     margin:0;
-    padding:0;
+
+    width:100%;
+
     min-height:100%;
-    font-family:Arial,Helvetica,sans-serif;
-    background:linear-gradient(
-        135deg,
-        #0d0f14,
-        #171a21
-    );
+
+    background:#07090b;
+
     color:#fff;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
 }
 
 body {
+
     min-height:100vh;
+
     display:flex;
+
     align-items:center;
+
     justify-content:center;
+
     padding:20px;
 }
 
-.login-box {
+.card {
+
     width:100%;
-    max-width:400px;
-    padding:32px;
-    border-radius:20px;
-    background:#1a1d23;
-    border:1px solid rgba(255,255,255,.09);
-    box-shadow:0 25px 70px rgba(0,0,0,.5);
+
+    max-width:430px;
+
+    padding:38px;
+
+    border-radius:26px;
+
+    background:
+        rgba(18,22,26,.94);
+
+    border:
+        1px solid
+        rgba(255,255,255,.08);
+
+    box-shadow:
+        0 30px 100px
+        rgba(0,0,0,.55);
 }
 
 .logo {
+
     width:78px;
+
     height:78px;
-    margin:0 auto 18px;
-    border-radius:50%;
+
+    margin:
+        0 auto 22px;
+
+    border-radius:22px;
+
     display:flex;
+
     align-items:center;
+
     justify-content:center;
-    background:#fff;
-    color:#111318;
+
     font-size:40px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #b5ff38,
+            #72d800
+        );
+
+    box-shadow:
+        0 15px 45px
+        rgba(163,255,18,.2);
 }
 
 h1 {
+
+    margin:0;
+
     text-align:center;
-    margin:0 0 8px;
-    font-size:28px;
+
+    font-size:27px;
 }
 
-.subtitle {
-    text-align:center;
-    color:#9da3ad;
-    margin:0 0 26px;
-    font-size:14px;
-}
+p {
 
-.error {
-    background:rgba(220,38,38,.12);
-    border:1px solid rgba(220,38,38,.30);
-    color:#ff9696;
-    border-radius:10px;
-    padding:12px;
-    margin-bottom:18px;
-    font-size:14px;
+    margin:
+        8px 0 28px;
+
     text-align:center;
+
+    color:#858d98;
 }
 
 label {
+
     display:block;
-    margin:0 0 7px;
-    font-size:14px;
+
+    margin:
+        0 0 8px;
+
+    color:#aeb5bf;
+
+    font-size:13px;
 }
 
 input {
+
     width:100%;
-    height:50px;
-    border:1px solid #343944;
-    border-radius:10px;
-    background:#101217;
-    color:#fff;
-    padding:0 14px;
+
+    height:52px;
+
+    padding:
+        0 15px;
+
+    margin-bottom:17px;
+
+    border:
+        1px solid
+        rgba(255,255,255,.08);
+
+    border-radius:14px;
+
     outline:none;
-    margin-bottom:18px;
-    font-size:16px;
+
+    background:#0b0e12;
+
+    color:#fff;
+}
+
+input:focus {
+
+    border-color:
+        rgba(163,255,18,.6);
+
+    box-shadow:
+        0 0 0 4px
+        rgba(163,255,18,.08);
 }
 
 button {
+
     width:100%;
-    height:50px;
+
+    height:54px;
+
     border:0;
-    border-radius:10px;
-    background:#fff;
-    color:#111318;
-    font-size:16px;
-    font-weight:700;
+
+    border-radius:15px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #b5ff38,
+            #70d800
+        );
+
+    color:#071000;
+
+    font-weight:800;
+
     cursor:pointer;
 }
 
-.footer {
+.error {
+
+    display:none;
+
+    margin-top:15px;
+
+    padding:12px;
+
+    border-radius:12px;
+
+    background:
+        rgba(255,60,80,.1);
+
+    color:#ff8995;
+
     text-align:center;
-    color:#686f7b;
-    margin-top:20px;
-    font-size:12px;
+
+    font-size:13px;
 }
+
 </style>
+
 </head>
 
 <body>
 
-<div class="login-box">
+<div class="card">
 
-<div class="logo">🥕</div>
+    <div class="logo">
+        🥕
+    </div>
 
-<h1>The rabbit in the hole</h1>
+    <h1>
+        Rabbit Control
+    </h1>
 
-<p class="subtitle">
-Sign in to continue
+    <p>
+        Master Control Center
+    </p>
+
+    <form id="form">
+
+        <label>
+            Administrator
+        </label>
+
+        <input
+            id="username"
+            autocomplete="username"
+            required
+        >
+
+        <label>
+            Password
+        </label>
+
+        <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            required
+        >
+
+        <button type="submit">
+            Enter Control Center
+        </button>
+
+        <div
+            id="error"
+            class="error"
+        ></div>
+
+    </form>
+
+</div>
+
+<script>
+
+document
+    .getElementById('form')
+    .addEventListener(
+        'submit',
+        async function(event) {
+
+            event.preventDefault();
+
+            const username =
+                document
+                    .getElementById(
+                        'username'
+                    )
+                    .value;
+
+            const password =
+                document
+                    .getElementById(
+                        'password'
+                    )
+                    .value;
+
+            const error =
+                document
+                    .getElementById(
+                        'error'
+                    );
+
+            error.style.display =
+                'none';
+
+            try {
+
+                const response =
+                    await fetch(
+                        '${CONFIG.adminPath}/api/login',
+                        {
+                            method:
+                                'POST',
+
+                            credentials:
+                                'same-origin',
+
+                            headers: {
+                                'Content-Type':
+                                    'application/json'
+                            },
+
+                            body:
+                                JSON.stringify({
+                                    username:
+                                        username,
+
+                                    password:
+                                        password
+                                })
+                        }
+                    );
+
+                const data =
+                    await response.json();
+
+                if (
+                    !response.ok
+                ) {
+
+                    throw new Error(
+                        data.error ||
+                        'Login failed'
+                    );
+
+                }
+
+                window.location.href =
+                    '${CONFIG.adminPath}';
+
+            } catch (err) {
+
+                error.textContent =
+                    err.message;
+
+                error.style.display =
+                    'block';
+
+            }
+
+        }
+    );
+
+</script>
+
+</body>
+
+</html>`;
+}
+
+
+/*
+============================================================
+ ADMIN APPLICATION
+============================================================
+*/
+
+function adminPage() {
+
+    return `<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1.0"
+>
+
+<meta
+    name="robots"
+    content="noindex,nofollow"
+>
+
+<title>Rabbit Control</title>
+
+<style>
+
+* {
+    box-sizing:border-box;
+}
+
+html,
+body {
+
+    margin:0;
+
+    min-height:100%;
+
+    background:#07090b;
+
+    color:#fff;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+}
+
+body {
+
+    min-height:100vh;
+}
+
+button,
+input,
+textarea,
+select {
+
+    font:inherit;
+}
+
+button {
+
+    cursor:pointer;
+}
+
+.hidden {
+
+    display:none!important;
+}
+
+
+/*
+SIDEBAR
+*/
+
+.sidebar {
+
+    position:fixed;
+
+    left:0;
+
+    top:0;
+
+    bottom:0;
+
+    width:250px;
+
+    padding:20px;
+
+    background:
+        rgba(13,16,20,.96);
+
+    border-right:
+        1px solid
+        rgba(255,255,255,.07);
+}
+
+.brand {
+
+    display:flex;
+
+    align-items:center;
+
+    gap:12px;
+
+    margin-bottom:25px;
+}
+
+.brand-icon {
+
+    width:44px;
+
+    height:44px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    border-radius:13px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #b5ff38,
+            #70d800
+        );
+
+    color:#071000;
+
+    font-size:23px;
+}
+
+.brand strong {
+
+    display:block;
+
+    font-size:15px;
+}
+
+.brand small {
+
+    color:#737b86;
+
+    font-size:11px;
+}
+
+.nav {
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:6px;
+}
+
+.nav button {
+
+    width:100%;
+
+    min-height:46px;
+
+    padding:
+        0 13px;
+
+    border:0;
+
+    border-radius:13px;
+
+    background:transparent;
+
+    color:#8f97a2;
+
+    text-align:left;
+}
+
+.nav button:hover {
+
+    background:
+        rgba(255,255,255,.05);
+
+    color:#fff;
+}
+
+.nav button.active {
+
+    color:#b9ff55;
+
+    background:
+        rgba(163,255,18,.09);
+
+    box-shadow:
+        inset 3px 0 0
+        #a3ff12;
+}
+
+.logout {
+
+    position:absolute;
+
+    left:20px;
+
+    right:20px;
+
+    bottom:20px;
+
+    height:45px;
+
+    border:
+        1px solid
+        rgba(255,255,255,.07);
+
+    border-radius:13px;
+
+    background:#101318;
+
+    color:#999fa8;
+}
+
+
+/*
+CONTENT
+*/
+
+.content {
+
+    margin-left:250px;
+
+    padding:28px;
+
+    min-height:100vh;
+}
+
+.topbar {
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:space-between;
+
+    margin-bottom:25px;
+}
+
+.topbar h1 {
+
+    margin:0;
+
+    font-size:27px;
+}
+
+.topbar p {
+
+    margin:6px 0 0;
+
+    color:#737b86;
+
+    font-size:13px;
+}
+
+.save {
+
+    height:45px;
+
+    padding:
+        0 18px;
+
+    border:0;
+
+    border-radius:13px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #b5ff38,
+            #70d800
+        );
+
+    color:#071000;
+
+    font-weight:800;
+}
+
+
+/*
+SECTIONS
+*/
+
+.section {
+
+    display:none;
+}
+
+.section.active {
+
+    display:block;
+}
+
+
+/*
+DASHBOARD
+*/
+
+.hero {
+
+    padding:30px;
+
+    border-radius:23px;
+
+    margin-bottom:18px;
+
+    background:
+        radial-gradient(
+            circle at 90% 20%,
+            rgba(163,255,18,.1),
+            transparent 35%
+        ),
+        linear-gradient(
+            135deg,
+            #13171c,
+            #0d1014
+        );
+
+    border:
+        1px solid
+        rgba(255,255,255,.07);
+}
+
+.hero h2 {
+
+    margin:0 0 8px;
+
+    font-size:23px;
+}
+
+.hero p {
+
+    margin:0;
+
+    color:#858d98;
+}
+
+.grid {
+
+    display:grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(
+                190px,
+                1fr
+            )
+        );
+
+    gap:14px;
+}
+
+.stat {
+
+    padding:22px;
+
+    border-radius:19px;
+
+    background:#111419;
+
+    border:
+        1px solid
+        rgba(255,255,255,.07);
+}
+
+.stat strong {
+
+    display:block;
+
+    margin-top:10px;
+
+    font-size:18px;
+}
+
+.stat span {
+
+    display:block;
+
+    margin-top:5px;
+
+    color:#737b86;
+
+    font-size:12px;
+}
+
+
+/*
+CARDS
+*/
+
+.card {
+
+    max-width:1050px;
+
+    padding:24px;
+
+    margin-bottom:18px;
+
+    border-radius:21px;
+
+    background:#111419;
+
+    border:
+        1px solid
+        rgba(255,255,255,.07);
+}
+
+.card h2 {
+
+    margin:
+        0 0 6px;
+
+    font-size:18px;
+}
+
+.sub {
+
+    margin:
+        0 0 22px;
+
+    color:#737b86;
+
+    font-size:12px;
+}
+
+.form-grid {
+
+    display:grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(
+                250px,
+                1fr
+            )
+        );
+
+    gap:16px;
+}
+
+.control {
+
+    margin-bottom:5px;
+}
+
+.control.full {
+
+    grid-column:
+        1 / -1;
+}
+
+.control label {
+
+    display:block;
+
+    margin-bottom:8px;
+
+    color:#adb4bd;
+
+    font-size:12px;
+}
+
+.control input,
+.control select,
+.control textarea {
+
+    width:100%;
+
+    border:
+        1px solid
+        rgba(255,255,255,.08);
+
+    border-radius:12px;
+
+    background:#0b0e12;
+
+    color:#fff;
+
+    outline:none;
+
+    padding:
+        12px 13px;
+}
+
+.control input,
+.control select {
+
+    height:46px;
+}
+
+.control textarea {
+
+    min-height:140px;
+
+    resize:vertical;
+
+    line-height:1.5;
+
+    font-family:
+        monospace;
+
+    font-size:12px;
+}
+
+.switch {
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:space-between;
+
+    padding:14px;
+
+    margin-bottom:8px;
+
+    border:
+        1px solid
+        rgba(255,255,255,.06);
+
+    border-radius:13px;
+
+    background:#0d1014;
+}
+
+.switch span {
+
+    color:#b8bec7;
+
+    font-size:13px;
+}
+
+.switch input {
+
+    width:19px;
+
+    height:19px;
+
+    accent-color:#a3ff12;
+}
+
+.color {
+
+    display:flex;
+
+    gap:8px;
+}
+
+.color input[type=color] {
+
+    width:58px;
+
+    padding:3px;
+
+    cursor:pointer;
+}
+
+.toast {
+
+    position:fixed;
+
+    right:22px;
+
+    bottom:22px;
+
+    padding:
+        13px 17px;
+
+    border-radius:13px;
+
+    background:
+        rgba(18,23,19,.96);
+
+    border:
+        1px solid
+        rgba(163,255,18,.25);
+
+    color:#b9ff55;
+
+    opacity:0;
+
+    transform:
+        translateY(15px);
+
+    pointer-events:none;
+
+    transition:.25s;
+}
+
+.toast.show {
+
+    opacity:1;
+
+    transform:
+        translateY(0);
+}
+
+
+@media(max-width:800px) {
+
+    .sidebar {
+
+        width:70px;
+
+        padding:
+            15px 10px;
+    }
+
+    .brand {
+
+        justify-content:center;
+    }
+
+    .brand > div:last-child {
+
+        display:none;
+    }
+
+    .nav button {
+
+        text-align:center;
+
+        padding:0;
+    }
+
+    .nav button span {
+
+        display:none;
+    }
+
+    .logout {
+
+        left:10px;
+
+        right:10px;
+    }
+
+    .logout span {
+
+        display:none;
+    }
+
+    .content {
+
+        margin-left:70px;
+
+        padding:17px;
+    }
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<aside class="sidebar">
+
+    <div class="brand">
+
+        <div class="brand-icon">
+            🥕
+        </div>
+
+        <div>
+
+            <strong>
+                Rabbit Control
+            </strong>
+
+            <small>
+                Master Panel
+            </small>
+
+        </div>
+
+    </div>
+
+
+    <nav class="nav">
+
+        <button
+            class="active"
+            data-page="dashboard"
+        >
+            🏠
+            <span>
+                Dashboard
+            </span>
+        </button>
+
+        <button
+            data-page="site"
+        >
+            🌐
+            <span>
+                Website
+            </span>
+        </button>
+
+        <button
+            data-page="background"
+        >
+            🖼️
+            <span>
+                Background
+            </span>
+        </button>
+
+        <button
+            data-page="appearance"
+        >
+            🎨
+            <span>
+                Appearance
+            </span>
+        </button>
+
+        <button
+            data-page="interface"
+        >
+            🧩
+            <span>
+                Interface
+            </span>
+        </button>
+
+        <button
+            data-page="code"
+        >
+            &lt;/&gt;
+            <span>
+                Custom Code
+            </span>
+        </button>
+
+        <button
+            data-page="advanced"
+        >
+            ⚡
+            <span>
+                Advanced
+            </span>
+        </button>
+
+    </nav>
+
+
+    <button
+        class="logout"
+        id="logout"
+    >
+        🚪
+        <span>
+            Logout
+        </span>
+    </button>
+
+</aside>
+
+
+<main class="content">
+
+<header class="topbar">
+
+    <div>
+
+        <h1 id="pageTitle">
+            Dashboard
+        </h1>
+
+        <p>
+            The rabbit in the hole
+        </p>
+
+    </div>
+
+    <button
+        class="save"
+        id="save"
+    >
+        Save Changes
+    </button>
+
+</header>
+
+
+<section
+    id="dashboard"
+    class="section active"
+>
+
+    <div class="hero">
+
+        <h2>
+            Master Control Center
+        </h2>
+
+        <p>
+            Control your website from one place.
+        </p>
+
+    </div>
+
+
+    <div class="grid">
+
+        <div class="stat">
+
+            <div>
+                🌐
+            </div>
+
+            <strong>
+                Website
+            </strong>
+
+            <span>
+                Identity and metadata
+            </span>
+
+        </div>
+
+        <div class="stat">
+
+            <div>
+                🖼️
+            </div>
+
+            <strong>
+                Background
+            </strong>
+
+            <span>
+                Images and videos
+            </span>
+
+        </div>
+
+        <div class="stat">
+
+            <div>
+                🎨
+            </div>
+
+            <strong>
+                Appearance
+            </strong>
+
+            <span>
+                Colors and typography
+            </span>
+
+        </div>
+
+        <div class="stat">
+
+            <div>
+                ⚡
+            </div>
+
+            <strong>
+                Custom Code
+            </strong>
+
+            <span>
+                CSS, JS and HTML
+            </span>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<section
+    id="site"
+    class="section"
+>
+
+<div class="card">
+
+<h2>
+    Website Identity
+</h2>
+
+<p class="sub">
+    Change website identity.
 </p>
 
+<div class="form-grid">
+
+<div class="control">
+
+<label>
+    Website name
+</label>
+
+<input
+    data-key="siteName"
+>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Browser title
+</label>
+
+<input
+    data-key="title"
+>
+
+</div>
+
+
+<div class="control full">
+
+<label>
+    Description
+</label>
+
+<textarea
+    data-key="description"
+></textarea>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Language
+</label>
+
+<select
+    data-key="language"
+>
+
+<option value="en">
+    English
+</option>
+
+<option value="ar">
+    Arabic
+</option>
+
+<option value="pt">
+    Portuguese
+</option>
+
+</select>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Direction
+</label>
+
+<select
+    data-key="direction"
+>
+
+<option value="ltr">
+    Left to right
+</option>
+
+<option value="rtl">
+    Right to left
+</option>
+
+</select>
+
+</div>
+
+
+<div class="control full">
+
+<label>
+    Favicon URL
+</label>
+
+<input
+    data-key="favicon"
+    placeholder="/images/logo.svg"
+>
+
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section
+    id="background"
+    class="section"
+>
+
+<div class="card">
+
+<h2>
+    Background Engine
+</h2>
+
+<p class="sub">
+    Image, GIF, WebP, SVG, AVIF, MP4 or WebM.
+</p>
+
+
+<div class="switch">
+
+<span>
+    Enable background
+</span>
+
+<input
+    type="checkbox"
+    data-key="backgroundEnabled"
+>
+
+</div>
+
+
+<div class="form-grid">
+
+<div class="control">
+
+<label>
+    Type
+</label>
+
+<select
+    data-key="backgroundType"
+>
+
+<option value="auto">
+    Auto
+</option>
+
+<option value="image">
+    Image
+</option>
+
+<option value="video">
+    Video
+</option>
+
+<option value="webm">
+    WebM
+</option>
+
+<option value="none">
+    None
+</option>
+
+</select>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Background URL
+</label>
+
+<input
+    data-key="backgroundUrl"
+    placeholder="/backgrounds/background.webp"
+>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Size
+</label>
+
+<select
+    data-key="backgroundSize"
+>
+
+<option value="cover">
+    Cover
+</option>
+
+<option value="contain">
+    Contain
+</option>
+
+<option value="100% 100%">
+    Stretch
+</option>
+
+<option value="auto">
+    Original
+</option>
+
+</select>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Position
+</label>
+
+<select
+    data-key="backgroundPosition"
+>
+
+<option value="center">
+    Center
+</option>
+
+<option value="top">
+    Top
+</option>
+
+<option value="bottom">
+    Bottom
+</option>
+
+<option value="left">
+    Left
+</option>
+
+<option value="right">
+    Right
+</option>
+
+</select>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Overlay
+</label>
+
+<input
+    data-key="backgroundOverlay"
+    placeholder="0.15"
+>
+
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section
+    id="appearance"
+    class="section"
+>
+
+<div class="card">
+
+<h2>
+    Visual System
+</h2>
+
+<p class="sub">
+    Colors and typography.
+</p>
+
+<div class="form-grid">
+
+<div class="control">
+
+<label>
+    Primary color
+</label>
+
+<div class="color">
+
+<input
+    type="color"
+    id="primaryPicker"
+>
+
+<input
+    data-key="primaryColor"
+>
+
+</div>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Secondary color
+</label>
+
+<div class="color">
+
+<input
+    type="color"
+    id="secondaryPicker"
+>
+
+<input
+    data-key="secondaryColor"
+>
+
+</div>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Background color
+</label>
+
+<div class="color">
+
+<input
+    type="color"
+    id="backgroundPicker"
+>
+
+<input
+    data-key="backgroundColor"
+>
+
+</div>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Text color
+</label>
+
+<div class="color">
+
+<input
+    type="color"
+    id="textPicker"
+>
+
+<input
+    data-key="textColor"
+>
+
+</div>
+
+</div>
+
+
+<div class="control full">
+
+<label>
+    Font family
+</label>
+
+<input
+    data-key="fontFamily"
+    placeholder="Arial, sans-serif"
+>
+
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section
+    id="interface"
+    class="section"
+>
+
+<div class="card">
+
+<h2>
+    Interface Control
+</h2>
+
+<p class="sub">
+    Hide or show website elements.
+</p>
+
+
+<div class="switch">
+
+<span>
+    Hide logo
+</span>
+
+<input
+    type="checkbox"
+    data-key="hideLogo"
+>
+
+</div>
+
+
+<div class="switch">
+
+<span>
+    Hide website name
+</span>
+
+<input
+    type="checkbox"
+    data-key="hideSiteName"
+>
+
+</div>
+
+
+<div class="switch">
+
+<span>
+    Hide footer
+</span>
+
+<input
+    type="checkbox"
+    data-key="hideFooter"
+>
+
+</div>
+
+
+<div class="switch">
+
+<span>
+    Hide home button
+</span>
+
+<input
+    type="checkbox"
+    data-key="hideHomeButton"
+>
+
+</div>
+
+
+<div class="switch">
+
+<span>
+    Hide chat
+</span>
+
+<input
+    type="checkbox"
+    data-key="hideChat"
+>
+
+</div>
+
+
+<div class="switch">
+
+<span>
+    Hide video
+</span>
+
+<input
+    type="checkbox"
+    data-key="hideVideo"
+>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section
+    id="code"
+    class="section"
+>
+
+<div class="card">
+
+<h2>
+    Custom Code
+</h2>
+
+<p class="sub">
+    Add your own CSS, JavaScript and HTML.
+</p>
+
+
+<div class="control">
+
+<label>
+    Custom CSS
+</label>
+
+<textarea
+    data-key="customCSS"
+    placeholder="/* Your CSS */"
+></textarea>
+
+</div>
+
+
+<br>
+
+
+<div class="control">
+
+<label>
+    Custom JavaScript
+</label>
+
+<textarea
+    data-key="customJS"
+    placeholder="// Your JavaScript"
+></textarea>
+
+</div>
+
+
+<br>
+
+
+<div class="control">
+
+<label>
+    HTML inside HEAD
+</label>
+
+<textarea
+    data-key="headHTML"
+></textarea>
+
+</div>
+
+
+<br>
+
+
+<div class="control">
+
+<label>
+    HTML after BODY
+</label>
+
+<textarea
+    data-key="bodyStartHTML"
+></textarea>
+
+</div>
+
+
+<br>
+
+
+<div class="control">
+
+<label>
+    HTML before BODY END
+</label>
+
+<textarea
+    data-key="bodyEndHTML"
+></textarea>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section
+    id="advanced"
+    class="section"
+>
+
+<div class="card">
+
+<h2>
+    Advanced
+</h2>
+
+<p class="sub">
+    Metadata and reset.
+</p>
+
+<div class="form-grid">
+
+<div class="control">
+
+<label>
+    Robots
+</label>
+
+<select
+    data-key="robots"
+>
+
+<option value="index,follow">
+    Index / Follow
+</option>
+
+<option value="noindex,nofollow">
+    No Index
+</option>
+
+<option value="index,nofollow">
+    Index / No Follow
+</option>
+
+</select>
+
+</div>
+
+
+<div class="control">
+
+<label>
+    Theme color
+</label>
+
+<input
+    data-key="themeColor"
+>
+
+</div>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+    Reset
+</h2>
+
+<p class="sub">
+    Restore default settings.
+</p>
+
+<button
+    class="save"
+    id="reset"
+>
+    Reset Everything
+</button>
+
+</div>
+
+</section>
+
+
+</main>
+
+
+<div
+    class="toast"
+    id="toast"
+>
+    Saved
+</div>
+
+
+<script>
+
+const state =
+    ${JSON.stringify(SITE)};
+
+
+const $ =
+    selector =>
+        document.querySelector(
+            selector
+        );
+
+
+const $$ =
+    selector =>
+        document.querySelectorAll(
+            selector
+        );
+
+
+function showToast(
+    message
+) {
+
+    const toast =
+        $('#toast');
+
+    toast.textContent =
+        message;
+
+    toast.classList.add(
+        'show'
+    );
+
+    setTimeout(
+        () =>
+            toast.classList.remove(
+                'show'
+            ),
+        2500
+    );
+
+}
+
+
+/*
+============================================================
+ NAVIGATION
+============================================================
+*/
+
+$$('.nav button')
+.forEach(
+    button => {
+
+        button.addEventListener(
+            'click',
+            function() {
+
+                $$('.nav button')
+                    .forEach(
+                        item =>
+                            item.classList.remove(
+                                'active'
+                            )
+                    );
+
+                this.classList.add(
+                    'active'
+                );
+
+                $$('.section')
+                    .forEach(
+                        section =>
+                            section.classList.remove(
+                                'active'
+                            )
+                    );
+
+                const page =
+                    this.dataset.page;
+
+                const section =
+                    document.getElementById(
+                        page
+                    );
+
+                if (section) {
+
+                    section.classList.add(
+                        'active'
+                    );
+
+                }
+
+                $('#pageTitle')
+                    .textContent =
+                    this.innerText.trim();
+
+            }
+        );
+
+    }
+);
+
+
+/*
+============================================================
+ LOAD FORM
+============================================================
+*/
+
+$$('[data-key]')
+.forEach(
+    input => {
+
+        const key =
+            input.dataset.key;
+
+        if (
+            !(key in state)
+        ) {
+            return;
+        }
+
+        if (
+            input.type ===
+            'checkbox'
+        ) {
+
+            input.checked =
+                Boolean(
+                    state[key]
+                );
+
+        } else {
+
+            input.value =
+                state[key] ?? '';
+
+        }
+
+    }
+);
+
+
+/*
+============================================================
+ COLORS
+============================================================
+*/
+
+const colorMap = {
+
+    primaryPicker:
+        'primaryColor',
+
+    secondaryPicker:
+        'secondaryColor',
+
+    backgroundPicker:
+        'backgroundColor',
+
+    textPicker:
+        'textColor',
+
+};
+
+
+Object.entries(
+    colorMap
+)
+.forEach(
+    ([pickerId, key]) => {
+
+        const picker =
+            document.getElementById(
+                pickerId
+            );
+
+        const input =
+            document.querySelector(
+                '[data-key="' +
+                key +
+                '"]'
+            );
+
+        if (
+            !picker ||
+            !input
+        ) {
+            return;
+        }
+
+        if (
+            /^#[0-9a-f]{6}$/i
+                .test(
+                    state[key]
+                )
+        ) {
+
+            picker.value =
+                state[key];
+
+        } else {
+
+            picker.value =
+                '#ffffff';
+
+        }
+
+        picker.addEventListener(
+            'input',
+            function() {
+
+                input.value =
+                    picker.value;
+
+            }
+        );
+
+        input.addEventListener(
+            'input',
+            function() {
+
+                if (
+                    /^#[0-9a-f]{6}$/i
+                        .test(
+                            input.value
+                        )
+                ) {
+
+                    picker.value =
+                        input.value;
+
+                }
+
+            }
+        );
+
+    }
+);
+
+
+/*
+============================================================
+ SAVE
+============================================================
+*/
+
+$('#save')
+.addEventListener(
+    'click',
+    async function() {
+
+        const data = {};
+
+        $$('[data-key]')
+        .forEach(
+            input => {
+
+                const key =
+                    input.dataset.key;
+
+                if (
+                    input.type ===
+                    'checkbox'
+                ) {
+
+                    data[key] =
+                        input.checked;
+
+                } else {
+
+                    data[key] =
+                        input.value;
+
+                }
+
+            }
+        );
+
+        try {
+
+            const response =
+                await fetch(
+                    '${CONFIG.adminPath}/api/save',
+                    {
+
+                        method:
+                            'POST',
+
+                        credentials:
+                            'same-origin',
+
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+
+                        body:
+                            JSON.stringify(
+                                data
+                            )
+
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok
+            ) {
+
+                throw new Error(
+                    result.error ||
+                    'Save failed'
+                );
+
+            }
+
+            showToast(
+                'Changes applied successfully'
+            );
+
+        } catch (error) {
+
+            showToast(
+                error.message
+            );
+
+        }
+
+    }
+);
+
+
+/*
+============================================================
+ LOGOUT
+============================================================
+*/
+
+$('#logout')
+.addEventListener(
+    'click',
+    async function() {
+
+        await fetch(
+            '${CONFIG.adminPath}/api/logout',
+            {
+
+                method:
+                    'POST',
+
+                credentials:
+                    'same-origin'
+
+            }
+        );
+
+        window.location.href =
+            '${CONFIG.adminPath}';
+
+    }
+);
+
+
+/*
+============================================================
+ RESET
+============================================================
+*/
+
+$('#reset')
+.addEventListener(
+    'click',
+    async function() {
+
+        if (
+            !confirm(
+                'Reset all control settings?'
+            )
+        ) {
+            return;
+        }
+
+        const response =
+            await fetch(
+                '${CONFIG.adminPath}/api/reset',
+                {
+
+                    method:
+                        'POST',
+
+                    credentials:
+                        'same-origin'
+
+                }
+            );
+
+        if (
+            response.ok
+        ) {
+
+            location.reload();
+
+        }
+
+    }
+);
+
+</script>
+
+</body>
+
+</html>`;
+}
+
+
+/*
+============================================================
+ MODIFY HTML
+============================================================
+*/
+
+function modifyHTML(
+    html
+) {
+
+    let output =
+        String(html);
+
+
+    /*
+    TITLE
+    */
+
+    if (
+        SITE.title
+    ) {
+
+        output =
+            output.replace(
+                /<title[^>]*>[\s\S]*?<\/title>/i,
+
+                '<title>' +
+                escapeHtml(
+                    SITE.title
+                ) +
+                '</title>'
+            );
+
+    }
+
+
+    /*
+    LANGUAGE / DIRECTION
+    */
+
+    output =
+        output.replace(
+            /<html([^>]*)>/i,
+
+            '<html$1 lang="' +
+            escapeHtml(
+                SITE.language
+            ) +
+            '" dir="' +
+            escapeHtml(
+                SITE.direction
+            ) +
+            '">'
+        );
+
+
+    /*
+    DESCRIPTION
+    */
+
+    if (
+        SITE.description
+    ) {
+
+        const meta =
+            '<meta name="description" content="' +
+            escapeHtml(
+                SITE.description
+            ) +
+            '">';
+
+        if (
+            /<meta[^>]+name=["']description["'][^>]*>/i
+                .test(output)
+        ) {
+
+            output =
+                output.replace(
+                    /<meta[^>]+name=["']description["'][^>]*>/i,
+                    meta
+                );
+
+        } else {
+
+            output =
+                output.replace(
+                    /<\/head>/i,
+                    meta +
+                    '\n</head>'
+                );
+
+        }
+
+    }
+
+
+    /*
+    ROBOTS
+    */
+
+    const robots =
+        '<meta name="robots" content="' +
+        escapeHtml(
+            SITE.robots
+        ) +
+        '">';
+
+    if (
+        /<meta[^>]+name=["']robots["'][^>]*>/i
+            .test(output)
+    ) {
+
+        output =
+            output.replace(
+                /<meta[^>]+name=["']robots["'][^>]*>/i,
+                robots
+            );
+
+    } else {
+
+        output =
+            output.replace(
+                /<\/head>/i,
+                robots +
+                '\n</head>'
+            );
+
+    }
+
+
+    /*
+    THEME COLOR
+    */
+
+    output =
+        output.replace(
+            /<\/head>/i,
+
+            '<meta name="theme-color" content="' +
+            escapeHtml(
+                SITE.themeColor
+            ) +
+            '">' +
+            '\n</head>'
+        );
+
+
+    /*
+    FAVICON
+    */
+
+    if (
+        SITE.favicon
+    ) {
+
+        output =
+            output.replace(
+                /<\/head>/i,
+
+                '<link rel="icon" href="' +
+                escapeHtml(
+                    SITE.favicon
+                ) +
+                '">' +
+                '\n</head>'
+            );
+
+    }
+
+
+    /*
+    BACKGROUND
+    */
+
+    let backgroundCSS =
+        '';
+
+    if (
+        SITE.backgroundEnabled &&
+        SITE.backgroundUrl &&
+        SITE.backgroundType !==
+            'none'
+    ) {
+
+        const url =
+            String(
+                SITE.backgroundUrl
+            )
+            .replace(
+                /"/g,
+                '\\"'
+            );
+
+
+        const type =
+            String(
+                SITE.backgroundType
+            )
+            .toLowerCase();
+
+
+        const isVideo =
+            type === 'video' ||
+            type === 'webm' ||
+            /\.(mp4|webm|ogv|ogg|m4v|mov)(\?.*)?$/i
+                .test(
+                    url
+                );
+
+
+        if (!isVideo) {
+
+            backgroundCSS = `
+
+#rabbit-background {
+
+    position:fixed;
+
+    inset:0;
+
+    z-index:-10;
+
+    pointer-events:none;
+
+    background-image:
+        url("${url}");
+
+    background-size:
+        ${safeString(
+            SITE.backgroundSize,
+            100
+        )};
+
+    background-position:
+        ${safeString(
+            SITE.backgroundPosition,
+            100
+        )};
+
+    background-repeat:
+        ${safeString(
+            SITE.backgroundRepeat,
+            100
+        )};
+
+    background-attachment:
+        ${safeString(
+            SITE.backgroundAttachment,
+            100
+        )};
+}
+
+#rabbit-background-overlay {
+
+    position:fixed;
+
+    inset:0;
+
+    z-index:-9;
+
+    pointer-events:none;
+
+    background:
+        rgba(
+            0,
+            0,
+            0,
+            ${Math.max(
+                0,
+                Math.min(
+                    1,
+                    Number(
+                        SITE.backgroundOverlay
+                    ) || 0
+                )
+            )}
+        );
+}
+
+`;
+
+        }
+
+    }
+
+
+    /*
+    VIDEO BACKGROUND
+    */
+
+    const videoType =
+        String(
+            SITE.backgroundType
+        )
+        .toLowerCase();
+
+    const videoUrl =
+        String(
+            SITE.backgroundUrl ||
+            ''
+        );
+
+
+    const videoBackground =
+        SITE.backgroundEnabled &&
+        videoUrl &&
+        (
+            videoType === 'video' ||
+            videoType === 'webm' ||
+            /\.(mp4|webm|ogv|ogg|m4v|mov)(\?.*)?$/i
+                .test(
+                    videoUrl
+                )
+        )
+        ? `
+
+<video
+    id="rabbit-background-video"
+    autoplay
+    muted
+    loop
+    playsinline
+>
+
+<source
+    src="${escapeHtml(
+        videoUrl
+    )}"
+>
+
+</video>
+
+<div
+    id="rabbit-background-video-overlay"
+></div>
+
+`
+        : '';
+
+
+    /*
+    HIDE RULES
+    */
+
+    const hideRules = `
+
 ${
-    safeMessage
-        ? `<div class="error">${safeMessage}</div>`
+    SITE.hideLogo
+        ? `
+img[src*="logo"],
+.logo,
+#logo,
+[class*="logo"] {
+    display:none!important;
+}
+`
         : ''
 }
 
-<form
-    method="POST"
-    action="/auth/login"
-    autocomplete="on"
->
-
-<label for="username">
-Username
-</label>
-
-<input
-    id="username"
-    name="username"
-    type="text"
-    autocomplete="username"
-    required
-    autofocus
->
-
-<label for="password">
-Password
-</label>
-
-<input
-    id="password"
-    name="password"
-    type="password"
-    autocomplete="current-password"
-    required
->
-
-<button type="submit">
-Login
-</button>
-
-</form>
-
-<div class="footer">
-https://live-six-hole.onrender.com
-</div>
-
-</div>
-
-</body>
-</html>`
-        );
+${
+    SITE.hideSiteName
+        ? `
+.site-name,
+#site-name,
+.brand-name,
+[class*="site-name"] {
+    display:none!important;
+}
+`
+        : ''
 }
 
-/* ============================================================
-   BLOCKED PAGE
-============================================================ */
+${
+    SITE.hideFooter
+        ? `
+footer,
+.footer,
+#footer {
+    display:none!important;
+}
+`
+        : ''
+}
 
-function sendBlockedPage(
-    res
-) {
-    return res
-        .status(403)
-        .send(
-            `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Loki Live - Access Blocked</title>
-<style>
+${
+    SITE.hideHomeButton
+        ? `
+.home,
+#home,
+.home-button,
+[class*="home-button"] {
+    display:none!important;
+}
+`
+        : ''
+}
+
+${
+    SITE.hideChat
+        ? `
+.chat,
+#chat,
+.chat-container,
+[class*="chat"] {
+    display:none!important;
+}
+`
+        : ''
+}
+
+${
+    SITE.hideVideo
+        ? `
+video:not(#rabbit-background-video),
+.video,
+.video-container {
+    display:none!important;
+}
+`
+        : ''
+}
+
+`;
+
+
+    /*
+    MASTER CSS
+    */
+
+    const masterCSS = `
+
+<style id="rabbit-master-control">
+
+:root {
+
+    --rabbit-primary:
+        ${safeColor(
+            SITE.primaryColor,
+            '#a3ff12'
+        )};
+
+    --rabbit-secondary:
+        ${safeColor(
+            SITE.secondaryColor,
+            '#7cff00'
+        )};
+
+    --rabbit-background:
+        ${safeColor(
+            SITE.backgroundColor,
+            '#090b0d'
+        )};
+
+    --rabbit-text:
+        ${safeColor(
+            SITE.textColor,
+            '#ffffff'
+        )};
+}
+
+html,
 body {
-    margin:0;
-    min-height:100vh;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:#111318;
-    color:#fff;
-    font-family:Arial,sans-serif;
-    padding:20px;
+
+    background:
+        ${safeColor(
+            SITE.backgroundColor,
+            '#090b0d'
+        )}!important;
+
+    color:
+        ${safeColor(
+            SITE.textColor,
+            '#ffffff'
+        )};
 }
-.box {
-    max-width:430px;
-    text-align:center;
-    background:#1a1d23;
-    padding:36px;
-    border-radius:18px;
+
+body {
+
+    font-family:
+        ${safeString(
+            SITE.fontFamily,
+            500
+        )}!important;
+
+    ${
+        SITE.fontSize
+            ? 'font-size:' +
+              safeString(
+                  SITE.fontSize,
+                  100
+              ) +
+              '!important;'
+            : ''
+    }
+
 }
-p {
-    color:#a8adb7;
-    line-height:1.6;
+
+${backgroundCSS}
+
+#rabbit-background-video {
+
+    position:fixed;
+
+    inset:0;
+
+    width:100%;
+
+    height:100%;
+
+    z-index:-10;
+
+    object-fit:
+        ${safeString(
+            SITE.backgroundSize,
+            100
+        )};
+
+    object-position:
+        ${safeString(
+            SITE.backgroundPosition,
+            100
+        )};
+
+    pointer-events:none;
 }
-</style>
-</head>
-<body>
-<div class="box">
-<h1>Access Blocked</h1>
-<p>
-Too many failed login attempts were detected.
-</p>
-<p>
-Please try again later.
-</p>
-</div>
-</body>
-</html>`
+
+#rabbit-background-video-overlay {
+
+    position:fixed;
+
+    inset:0;
+
+    z-index:-9;
+
+    background:
+        rgba(
+            0,
+            0,
+            0,
+            ${Math.max(
+                0,
+                Math.min(
+                    1,
+                    Number(
+                        SITE.backgroundOverlay
+                    ) || 0
+                )
+            )}
         );
+
+    pointer-events:none;
 }
 
-/* ============================================================
-   BASIC AUTH MIDDLEWARE
-============================================================ */
+${hideRules}
 
-function basicAuth(
+${safeString(
+    SITE.customCSS,
+    100000
+)}
+
+</style>
+
+`;
+
+
+    /*
+    INSERT BACKGROUND
+    */
+
+    if (
+        backgroundCSS
+    ) {
+
+        output =
+            output.replace(
+                /<body([^>]*)>/i,
+
+                '<body$1>' +
+                '<div id="rabbit-background"></div>' +
+                '<div id="rabbit-background-overlay"></div>'
+            );
+
+    }
+
+
+    if (
+        videoBackground
+    ) {
+
+        output =
+            output.replace(
+                /<body([^>]*)>/i,
+
+                '<body$1>' +
+                videoBackground
+            );
+
+    }
+
+
+    /*
+    INSERT HEAD
+    */
+
+    output =
+        output.replace(
+            /<\/head>/i,
+
+            masterCSS +
+            '\n' +
+            safeString(
+                SITE.headHTML,
+                100000
+            ) +
+            '\n</head>'
+        );
+
+
+    /*
+    BODY START
+    */
+
+    if (
+        SITE.bodyStartHTML
+    ) {
+
+        output =
+            output.replace(
+                /<body([^>]*)>/i,
+
+                '<body$1>\n' +
+                safeString(
+                    SITE.bodyStartHTML,
+                    100000
+                )
+            );
+
+    }
+
+
+    /*
+    BODY END
+    */
+
+    const customJS =
+        SITE.customJS
+            ? `
+
+<script id="rabbit-master-control-js">
+
+${safeString(
+    SITE.customJS,
+    100000
+)}
+
+</script>
+
+`
+            : '';
+
+
+    output =
+        output.replace(
+            /<\/body>/i,
+
+            safeString(
+                SITE.bodyEndHTML,
+                100000
+            ) +
+            customJS +
+            '\n</body>'
+        );
+
+
+    return output;
+}
+
+
+/*
+============================================================
+ DETECT HTML REQUEST
+============================================================
+*/
+
+function isHTMLRequest(
+    req
+) {
+
+    const pathname =
+        req.path || '';
+
+
+    if (
+        pathname ===
+        CONFIG.adminPath
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        pathname.startsWith(
+            CONFIG.adminPath +
+            '/'
+        )
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        pathname.startsWith(
+            '/api/'
+        )
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        /\.(css|js|mjs|png|jpg|jpeg|gif|webp|avif|svg|ico|webm|mp4|m4v|mov|ogv|ogg|mp3|wav|woff|woff2|ttf|json|map)$/i
+            .test(
+                pathname
+            )
+    ) {
+
+        return false;
+
+    }
+
+
+    return true;
+}
+
+
+/*
+============================================================
+ HTML INTERCEPTOR
+============================================================
+*/
+
+function interceptHTML(
     req,
     res,
     next
 ) {
-    if (
-        !BASIC_AUTH_ENABLED
-    ) {
-        return next();
-    }
 
-    if (
-        req.path === '/login' ||
-        req.path === '/auth/login'
-    ) {
-        return next();
-    }
+    const chunks =
+        [];
 
-    if (
-        req.path === '/favicon.ico'
-    ) {
-        return next();
-    }
-
-    const ip =
-        getClientIp(req);
-
-    if (
-        isIpBlocked(ip)
-    ) {
-        return sendBlockedPage(
+    const originalWrite =
+        res.write.bind(
             res
         );
-    }
 
-    if (
-        isHttpAuthenticated(req)
-    ) {
-        return next();
-    }
-
-    if (
-        req.method === 'GET' ||
-        req.method === 'HEAD'
-    ) {
-        return res.redirect(
-            302,
-            '/login'
+    const originalEnd =
+        res.end.bind(
+            res
         );
-    }
 
-    return res
-        .status(401)
-        .json({
-            error:
-                'Authentication required',
 
-            login:
-                '/login',
-        });
+    res.write =
+        function(
+            chunk,
+            encoding
+        ) {
+
+            if (
+                chunk
+            ) {
+
+                chunks.push(
+                    Buffer.isBuffer(
+                        chunk
+                    )
+                        ? chunk
+                        : Buffer.from(
+                            chunk,
+                            encoding
+                        )
+                );
+
+            }
+
+            return true;
+        };
+
+
+    res.end =
+        function(
+            chunk,
+            encoding
+        ) {
+
+            if (
+                chunk
+            ) {
+
+                chunks.push(
+                    Buffer.isBuffer(
+                        chunk
+                    )
+                        ? chunk
+                        : Buffer.from(
+                            chunk,
+                            encoding
+                        )
+                );
+
+            }
+
+
+            const buffer =
+                Buffer.concat(
+                    chunks
+                );
+
+
+            const content =
+                buffer.toString(
+                    'utf8'
+                );
+
+
+            if (
+                /<!doctype\s+html|<html[\s>]/i
+                    .test(
+                        content
+                    )
+            ) {
+
+                const modified =
+                    modifyHTML(
+                        content
+                    );
+
+
+                res.setHeader(
+                    'Content-Length',
+                    Buffer.byteLength(
+                        modified,
+                        'utf8'
+                    )
+                );
+
+
+                return originalEnd(
+                    modified,
+                    'utf8'
+                );
+
+            }
+
+
+            return originalEnd(
+                buffer
+            );
+
+        };
+
+
+    next();
 }
 
-/* ============================================================
-   LOGIN ROUTES
-============================================================ */
 
-app.get(
-    '/login',
-    (
-        req,
-        res
-    ) => {
-        if (
-            !BASIC_AUTH_ENABLED
-        ) {
-            return res.redirect(
-                '/'
-            );
-        }
+/*
+============================================================
+ MAIN MIDDLEWARE
+============================================================
+*/
 
-        const ip =
-            getClientIp(req);
+function middleware(
+    req,
+    res,
+    next
+) {
 
-        if (
-            isIpBlocked(ip)
-        ) {
-            return sendBlockedPage(
-                res
-            );
-        }
+    /*
+    ADMIN PAGE
+    */
+
+    if (
+        req.path ===
+        CONFIG.adminPath
+    ) {
 
         if (
-            isHttpAuthenticated(req)
+            !isAuthenticated(req)
         ) {
-            return res.redirect(
-                '/'
-            );
+
+            return res
+                .status(200)
+                .send(
+                    loginPage()
+                );
+
         }
 
-        return sendLoginPage(
+        return res
+            .status(200)
+            .send(
+                adminPage()
+            );
+
+    }
+
+
+    /*
+    LOGIN
+    */
+
+    if (
+        req.path ===
+        CONFIG.adminPath +
+        '/api/login'
+        &&
+        req.method ===
+        'POST'
+    ) {
+
+        return loginAPI(
+            req,
             res
         );
+
     }
-);
 
-app.post(
-    '/auth/login',
-    express.urlencoded({
-        extended:false,
-    }),
-    (
-        req,
-        res
-    ) => {
-        if (
-            !BASIC_AUTH_ENABLED
-        ) {
-            return res.redirect(
-                '/'
-            );
-        }
 
-        const ip =
-            getClientIp(req);
+    /*
+    LOGOUT
+    */
 
-        if (
-            isIpBlocked(ip)
-        ) {
-            return sendBlockedPage(
-                res
-            );
-        }
+    if (
+        req.path ===
+        CONFIG.adminPath +
+        '/api/logout'
+        &&
+        req.method ===
+        'POST'
+    ) {
 
-        const username =
-            typeof req.body.username ===
-            'string'
-                ? req.body.username
-                : '';
-
-        const password =
-            typeof req.body.password ===
-            'string'
-                ? req.body.password
-                : '';
-
-        if (
-            checkLoginCredentials(
-                username,
-                password
-            )
-        ) {
-            resetLoginAttempts(
-                ip
-            );
-
-            setAuthCookie(
-                res,
+        const cookies =
+            getCookies(
                 req
             );
 
-            log.info(
-                'Successful Loki Live login',
-                {
-                    ip,
-                    username,
-                }
-            );
-
-            return res.redirect(
-                303,
-                '/'
-            );
-        }
-
-        const result =
-            registerFailedLogin(
-                ip
-            );
+        const token =
+            cookies[
+                ADMIN_COOKIE
+            ];
 
         if (
-            result.blocked
+            token
         ) {
-            return sendBlockedPage(
-                res
+
+            sessions.delete(
+                token
             );
+
         }
 
-        const remaining =
-            MAX_LOGIN_ATTEMPTS -
-            result.attempts;
 
-        return sendLoginPage(
-            res,
-            `Invalid username or password. ${remaining} attempt${
-                remaining === 1
-                    ? ''
-                    : 's'
-            } remaining.`
+        res.setHeader(
+            'Set-Cookie',
+
+            ADMIN_COOKIE +
+            '=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
         );
+
+
+        return res.json({
+            success:true
+        });
+
     }
-);
 
-app.get(
-    '/auth/logout',
-    (
-        req,
-        res
-    ) => {
-        clearAuthCookie(
-            res,
-            req
-        );
 
-        res.redirect(
-            '/login'
-        );
-    }
-);
-
-/* ============================================================
-   SERVER SETTINGS
-============================================================ */
-
-const trustProxy =
-    !!getEnvBoolean(
-        process.env.TRUST_PROXY
-    );
-
-const port =
-    process.env.PORT ||
-    8080;
-
-const host =
-    process.env.HOST ||
-    `http://localhost:${port}`;
-
-const apiKeySecret =
-    process.env.API_KEY_SECRET ||
-    'mirotalkc2c_default_secret';
-
-const apiBasePath =
-    '/api/v1';
-
-const apiDocs =
-    host +
-    apiBasePath +
-    '/docs';
-
-/* ============================================================
-   CORS
-============================================================ */
-
-const cors_origin =
-    process.env.CORS_ORIGIN;
-
-const cors_methods =
-    process.env.CORS_METHODS;
-
-let corsOrigin = '*';
-
-let corsMethods = [
-    'GET',
-    'POST',
-];
-
-if (
-    cors_origin &&
-    cors_origin !== '*'
-) {
-    try {
-        corsOrigin =
-            JSON.parse(
-                cors_origin
-            );
-    } catch (error) {
-        log.error(
-            'Error parsing CORS_ORIGIN',
-            error.message
-        );
-    }
-}
-
-if (
-    cors_methods &&
-    cors_methods !== ''
-) {
-    try {
-        corsMethods =
-            JSON.parse(
-                cors_methods
-            );
-    } catch (error) {
-        log.error(
-            'Error parsing CORS_METHODS',
-            error.message
-        );
-    }
-}
-
-const corsOptions = {
-    origin:
-        corsOrigin,
-
-    methods:
-        corsMethods,
-
-    credentials:
-        true,
-};
-
-/* ============================================================
-   SOCKET.IO
-============================================================ */
-
-const io =
-    new Server(
-        server,
-        {
-            maxHttpBufferSize:
-                1e7,
-
-            transports: [
-                'websocket',
-                'polling',
-            ],
-
-            cors:
-                corsOptions,
-        }
-    );
-
-/* ============================================================
-   SOCKET AUTH
-============================================================ */
-
-io.use(
-    (
-        socket,
-        next
-    ) => {
-        if (
-            !BASIC_AUTH_ENABLED
-        ) {
-            return next();
-        }
-
-        const headers =
-            socket.handshake
-                ?.headers || {};
-
-        const cookieHeader =
-            headers.cookie || '';
-
-        let authCookie =
-            null;
-
-        const cookies =
-            cookieHeader.split(';');
-
-        for (
-            const cookie of cookies
-        ) {
-            const separator =
-                cookie.indexOf('=');
-
-            if (
-                separator === -1
-            ) {
-                continue;
-            }
-
-            const name =
-                cookie
-                    .substring(
-                        0,
-                        separator
-                    )
-                    .trim();
-
-            const value =
-                cookie
-                    .substring(
-                        separator + 1
-                    )
-                    .trim();
-
-            if (
-                name ===
-                BASIC_AUTH_COOKIE
-            ) {
-                try {
-                    authCookie =
-                        decodeURIComponent(
-                            value
-                        );
-                } catch {
-                    authCookie =
-                        value;
-                }
-
-                break;
-            }
-        }
-
-        if (
-            verifyAuthCookie(
-                authCookie
-            )
-        ) {
-            return next();
-        }
-
-        return next(
-            new Error(
-                'Authentication required'
-            )
-        );
-    }
-);
-
-/* ============================================================
-   NGROK
-============================================================ */
-
-const ngrokEnabled =
-    getEnvBoolean(
-        process.env.NGROK_ENABLED
-    );
-
-const ngrokAuthToken =
-    process.env.NGROK_AUTH_TOKEN;
-
-/* ============================================================
-   ICE SERVERS
-============================================================ */
-
-const iceServers = [];
-
-const stunServerUrl =
-    process.env.STUN_SERVER_URL;
-
-const turnServerUrl =
-    process.env.TURN_SERVER_URL;
-
-const turnServerUsername =
-    process.env.TURN_SERVER_USERNAME;
-
-const turnServerCredential =
-    process.env.TURN_SERVER_CREDENTIAL;
-
-const stunServerEnabled =
-    getEnvBoolean(
-        process.env.STUN_SERVER_ENABLED
-    );
-
-const turnServerEnabled =
-    getEnvBoolean(
-        process.env.TURN_SERVER_ENABLED
-    );
-
-if (
-    stunServerEnabled &&
-    stunServerUrl
-) {
-    iceServers.push({
-        urls:
-            stunServerUrl,
-    });
-}
-
-if (
-    turnServerEnabled &&
-    turnServerUrl &&
-    turnServerUsername &&
-    turnServerCredential
-) {
-    iceServers.push({
-        urls:
-            turnServerUrl,
-
-        username:
-            turnServerUsername,
-
-        credential:
-            turnServerCredential,
-    });
-}
-
-/* ============================================================
-   MATTERMOST
-============================================================ */
-
-const mattermostCfg = {
-    enabled:
-        getEnvBoolean(
-            process.env.MATTERMOST_ENABLED
-        ),
-
-    server_url:
-        process.env.MATTERMOST_SERVER_URL,
-
-    username:
-        process.env.MATTERMOST_USERNAME,
-
-    password:
-        process.env.MATTERMOST_PASSWORD,
-
-    token:
-        process.env.MATTERMOST_TOKEN,
-};
-
-const surveyURL =
-    process.env.SURVEY_URL ||
-    false;
-
-const redirectURL =
-    process.env.REDIRECT_URL ||
-    false;
-
-/* ============================================================
-   OIDC
-============================================================ */
-
-const OIDC = {
-    enabled:
-        process.env.OIDC_ENABLED
-            ? getEnvBoolean(
-                  process.env.OIDC_ENABLED
-              )
-            : false,
-
-    baseUrlDynamic:
-        process.env.OIDC_BASE_URL_DYNAMIC
-            ? getEnvBoolean(
-                  process.env.OIDC_BASE_URL_DYNAMIC
-              )
-            : false,
-
-    allowedDynamicBaseURLs:
-        process.env.OIDC_ALLOWED_DYNAMIC_BASE_URLS
-            ? process.env.OIDC_ALLOWED_DYNAMIC_BASE_URLS
-                  .split(',')
-                  .map(
-                      u =>
-                          u.trim()
-                  )
-                  .filter(Boolean)
-            : [],
-
-    config: {
-        issuerBaseURL:
-            process.env.OIDC_ISSUER_BASE_URL,
-
-        clientID:
-            process.env.OIDC_CLIENT_ID,
-
-        clientSecret:
-            process.env.OIDC_CLIENT_SECRET,
-
-        baseURL:
-            process.env.OIDC_BASE_URL,
-
-        secret:
-            process.env.SESSION_SECRET,
-
-        authorizationParams: {
-            response_type:
-                'code',
-
-            scope:
-                'openid profile email',
-        },
-
-        authRequired:
-            process.env.OIDC_AUTH_REQUIRED
-                ? getEnvBoolean(
-                      process.env.OIDC_AUTH_REQUIRED
-                  )
-                : false,
-
-        auth0Logout:
-            process.env.OIDC_AUTH_LOGOUT
-                ? getEnvBoolean(
-                      process.env.OIDC_AUTH_LOGOUT
-                  )
-                : true,
-
-        routes: {
-            callback:
-                '/auth/callback',
-
-            login:
-                false,
-
-            logout:
-                '/logout',
-        },
-    },
-};
-
-const OIDCAuth =
-    function (
-        req,
-        res,
-        next
+    /*
+    SAVE
+    */
+
+    if (
+        req.path ===
+        CONFIG.adminPath +
+        '/api/save'
+        &&
+        req.method ===
+        'POST'
     ) {
+
         if (
-            OIDC.enabled
+            !isAuthenticated(req)
         ) {
-            if (
-                req.oidc &&
-                req.oidc.isAuthenticated()
-            ) {
-                return next();
-            }
-
-            return requiresAuth()(
-                req,
-                res,
-                next
-            );
-        }
-
-        return next();
-    };
-
-/* ============================================================
-   FRONTEND
-============================================================ */
-
-const frontendDir =
-    path.join(
-        __dirname,
-        '../',
-        'frontend'
-    );
-
-const htmlClient =
-    path.join(
-        __dirname,
-        '../',
-        'frontend/html/client.html'
-    );
-
-const htmlHome =
-    path.join(
-        __dirname,
-        '../',
-        'frontend/html/home.html'
-    );
-
-const htmlPrivacy =
-    path.join(
-        __dirname,
-        '../',
-        'frontend/html/privacy.html'
-    );
-
-/* ============================================================
-   ROOM STORAGE
-============================================================ */
-
-const channels = {};
-const sockets = {};
-const peers = {};
-
-/* ============================================================
-   EXPRESS
-============================================================ */
-
-app.set(
-    'trust proxy',
-    trustProxy
-);
-
-app.use(
-    helmet.noSniff()
-);
-
-app.use(rabbitControl
-);
-/*
- * Authentication before protected
- * frontend/API routes.
- */
-app.use(
-    basicAuth
-);
-
-app.use(
-    applyEmbedHeaders
-);
-
-app.use(
-    express.static(
-        frontendDir
-    )
-);
-
-app.use(
-    cors(
-        corsOptions
-    )
-);
-
-app.use(
-    compression()
-);
-
-app.use(
-    express.json({
-        limit:
-            '1mb',
-    })
-);
-
-app.use(
-    express.urlencoded({
-        extended:false,
-        limit:
-            '1mb',
-    })
-);
-
-app.use(
-    apiBasePath +
-        '/docs',
-    swaggerUi.serve,
-    swaggerUi.setup(
-        swaggerDocument
-    )
-);
-
-/* ============================================================
-   REQUEST LOGGING
-============================================================ */
-
-app.use(
-    (
-        req,
-        res,
-        next
-    ) => {
-        log.debug(
-            'New request:',
-            {
-                method:
-                    req.method,
-
-                path:
-                    req.originalUrl,
-            }
-        );
-
-        next();
-    }
-);
-
-/* ============================================================
-   MATTERMOST
-============================================================ */
-
-const mattermost =
-    new mattermostCli(
-        app,
-        mattermostCfg
-    );
-
-/* ============================================================
-   ERROR HANDLER
-============================================================ */
-
-app.use(
-    (
-        err,
-        req,
-        res,
-        next
-    ) => {
-        if (
-            err instanceof
-                SyntaxError ||
-            err.status === 400 ||
-            'body' in err
-        ) {
-            log.error(
-                'Request Error',
-                {
-                    error:
-                        err.message,
-                }
-            );
 
             return res
-                .status(400)
-                .send({
-                    status:
-                        400,
-
-                    message:
-                        err.message,
-                });
-        }
-
-        if (
-            req.path.substr(
-                -1
-            ) === '/' &&
-            req.path.length > 1
-        ) {
-            const query =
-                req.url.slice(
-                    req.path.length
-                );
-
-            return res.redirect(
-                301,
-                req.path.slice(
-                    0,
-                    -1
-                ) + query
-            );
-        }
-
-        return next();
-    }
-);
-
-/* ============================================================
-   OIDC
-============================================================ */
-
-if (
-    OIDC.enabled
-) {
-    const configuredAllowlist =
-        Array.isArray(
-            OIDC.allowedDynamicBaseURLs
-        )
-            ? OIDC.allowedDynamicBaseURLs
-            : [];
-
-    const allowedOrigins =
-        new Set(
-            [
-                OIDC.config?.baseURL,
-                ...configuredAllowlist,
-            ]
-                .filter(Boolean)
-                .map(
-                    u => {
-                        try {
-                            return new URL(
-                                u
-                            ).origin;
-                        } catch {
-                            return null;
-                        }
-                    }
-                )
-                .filter(Boolean)
-        );
-
-    const authMiddlewareCache =
-        new Map();
-
-    const getAuthMiddleware =
-        (
-            incomingHost,
-            protocol
-        ) => {
-            if (
-                !OIDC.baseUrlDynamic
-            ) {
-                if (
-                    !authMiddlewareCache.has(
-                        'static'
-                    )
-                ) {
-                    authMiddlewareCache.set(
-                        'static',
-                        auth(
-                            OIDC.config
-                        )
-                    );
-                }
-
-                return authMiddlewareCache.get(
-                    'static'
-                );
-            }
-
-            const key =
-                `${protocol}://${incomingHost}`;
-
-            if (
-                !authMiddlewareCache.has(
-                    key
-                )
-            ) {
-                const config = {
-                    ...OIDC.config,
-                    baseURL:
-                        key,
-                };
-
-                authMiddlewareCache.set(
-                    key,
-                    auth(config)
-                );
-            }
-
-            return authMiddlewareCache.get(
-                key
-            );
-        };
-
-    app.use(
-        (
-            req,
-            res,
-            next
-        ) => {
-            const incomingHost =
-                req.headers.host;
-
-            const protocol =
-                req.protocol ===
-                'https'
-                    ? 'https'
-                    : 'http';
-
-            const cacheKey =
-                `${protocol}://${incomingHost}`;
-
-            if (
-                OIDC.baseUrlDynamic &&
-                !allowedOrigins.has(
-                    cacheKey
-                )
-            ) {
-                return res
-                    .status(400)
-                    .send(
-                        'Bad Request: invalid Host header'
-                    );
-            }
-
-            try {
-                return getAuthMiddleware(
-                    incomingHost,
-                    protocol
-                )(
-                    req,
-                    res,
-                    next
-                );
-            } catch (error) {
-                log.error(
-                    'OIDC Auth Middleware Error',
-                    error
-                );
-
-                process.exit(1);
-            }
-        }
-    );
-}
-
-/* ============================================================
-   PROFILE
-============================================================ */
-
-app.get(
-    '/profile',
-    OIDCAuth,
-    (
-        req,
-        res
-    ) => {
-        if (
-            OIDC.enabled
-        ) {
-            return res.json(
-                req.oidc.user
-            );
-        }
-
-        return res.json({
-            profile:
-                false,
-        });
-    }
-);
-
-/* ============================================================
-   OIDC CALLBACK
-============================================================ */
-
-app.get(
-    '/auth/callback',
-    (
-        req,
-        res,
-        next
-    ) => {
-        next();
-    }
-);
-
-/* ============================================================
-   LOGOUT
-============================================================ */
-
-app.get(
-    '/logout',
-    (
-        req,
-        res
-    ) => {
-        if (
-            OIDC.enabled &&
-            req.logout
-        ) {
-            req.logout();
-        }
-
-        clearAuthCookie(
-            res,
-            req
-        );
-
-        res.redirect(
-            '/login'
-        );
-    }
-);
-
-/* ============================================================
-   HOME OIDC AUTH
-============================================================ */
-
-const HomeOIDCAuth =
-    (
-        req,
-        res,
-        next
-    ) => {
-        if (
-            OIDC.enabled &&
-            !OIDC.config.authRequired &&
-            req.oidc &&
-            !req.oidc.isAuthenticated()
-        ) {
-            const query =
-                checkXSS(
-                    req.query ||
-                        {}
-                );
-
-            const room =
-                query &&
-                query.room;
-
-            if (
-                room &&
-                room in peers
-            ) {
-                return next();
-            }
-        }
-
-        return OIDCAuth(
-            req,
-            res,
-            next
-        );
-    };
-
-/* ============================================================
-   HOME
-============================================================ */
-
-app.get(
-    '/',
-    HomeOIDCAuth,
-    (
-        req,
-        res
-    ) => {
-        return res.sendFile(
-            htmlHome
-        );
-    }
-);
-
-/* ============================================================
-   PRIVACY
-============================================================ */
-
-app.get(
-    '/privacy',
-    (
-        req,
-        res
-    ) => {
-        return res.sendFile(
-            htmlPrivacy
-        );
-    }
-);
-
-/* ============================================================
-   JOIN
-============================================================ */
-
-app.get(
-    '/join/',
-    (
-        req,
-        res,
-        next
-    ) => {
-        if (
-            Object.keys(
-                req.query
-            ).length === 0
-        ) {
-            return notFound(
-                res
-            );
-        }
-
-        const {
-            room,
-            name,
-        } =
-            checkXSS(
-                req.query
-            );
-
-        if (
-            !room ||
-            !name
-        ) {
-            return notFound(
-                res
-            );
-        }
-
-        if (
-            OIDC.enabled &&
-            OIDC.config.authRequired &&
-            (
-                !req.oidc ||
-                !req.oidc.isAuthenticated()
-            )
-        ) {
-            return OIDCAuth(
-                req,
-                res,
-                next
-            );
-        }
-
-        if (
-            OIDC.enabled &&
-            (
-                !req.oidc ||
-                !req.oidc.isAuthenticated()
-            )
-        ) {
-            const roomExist =
-                room in peers;
-
-            if (
-                !roomExist
-            ) {
-                return notFound(
-                    res
-                );
-            }
-        }
-
-        return res.sendFile(
-            htmlClient
-        );
-    }
-);
-
-/* ============================================================
-   API MEETING
-============================================================ */
-
-app.post(
-    `${apiBasePath}/meeting`,
-    (
-        req,
-        res
-    ) => {
-        const {
-            host,
-            authorization,
-        } =
-            req.headers;
-
-        const api =
-            new ServerApi(
-                host,
-                authorization,
-                apiKeySecret
-            );
-
-        if (
-            !api.isAuthorized()
-        ) {
-            return res
-                .status(403)
+                .status(401)
                 .json({
                     error:
-                        'Unauthorized!',
+                        'Authentication required'
                 });
+
         }
 
-        const meetingURL =
-            api.getMeetingURL();
-
-        return res.json({
-            meeting:
-                meetingURL,
-        });
-    }
-);
-
-/* ============================================================
-   API JOIN
-============================================================ */
-
-app.post(
-    `${apiBasePath}/join`,
-    (
-        req,
-        res
-    ) => {
-        const {
-            host,
-            authorization,
-        } =
-            req.headers;
-
-        const api =
-            new ServerApi(
-                host,
-                authorization,
-                apiKeySecret
-            );
-
-        if (
-            !api.isAuthorized()
-        ) {
-            return res
-                .status(403)
-                .json({
-                    error:
-                        'Unauthorized!',
-                });
-        }
-
-        const joinURL =
-            api.getJoinURL(
-                req.body
-            );
-
-        return res.json({
-            join:
-                joinURL,
-        });
-    }
-);
-
-/* ============================================================
-   404
-============================================================ */
-
-app.use(
-    (
-        req,
-        res
-    ) => {
-        return notFound(
+        return saveAPI(
+            req,
             res
         );
+
     }
-);
 
-function notFound(
-    res
-) {
-    return res
-        .status(404)
-        .json({
-            data:
-                '404 not found',
-        });
-}
 
-/* ============================================================
-   ENV BOOLEAN
-============================================================ */
+    /*
+    RESET
+    */
 
-function getEnvBoolean(
-    key,
-    force_true_if_undefined = false
-) {
     if (
-        key == undefined &&
-        force_true_if_undefined
+        req.path ===
+        CONFIG.adminPath +
+        '/api/reset'
+        &&
+        req.method ===
+        'POST'
     ) {
-        return true;
-    }
-
-    return key === 'true';
-}
-
-/* ============================================================
-   SERVER CONFIG
-============================================================ */
-
-function getServerConfig(
-    tunnelHttps = false
-) {
-    const serverConfig = {
-        home:
-            host,
-
-        room:
-            host +
-            queryRoom,
-
-        join:
-            host +
-            queryJoin,
-    };
-
-    const serverTunnel =
-        tunnelHttps
-            ? {
-                  ngrokHome:
-                      tunnelHttps,
-
-                  ngrokRoom:
-                      tunnelHttps +
-                      queryRoom,
-
-                  ngrokJoin:
-                      tunnelHttps +
-                      queryJoin,
-
-                  ngrokToken:
-                      ngrokAuthToken,
-              }
-            : false;
-
-    return {
-        server:
-            serverConfig,
-
-        serverTunnel:
-            serverTunnel,
-
-        trustProxy:
-            trustProxy,
-
-        oidc:
-            OIDC.enabled
-                ? OIDC
-                : false,
-
-        iceServers:
-            iceServers,
-
-        cors:
-            corsOptions,
-
-        embed: {
-            allowedOrigins:
-                embedAllowedOrigins.length
-                    ? embedAllowedOrigins
-                    : 'any',
-
-            csp:
-                embedCsp
-                    ? embedCsp.csp
-                    : 'not set',
-        },
-
-        apiDocs:
-            apiDocs,
-
-        basicAuth: {
-            enabled:
-                BASIC_AUTH_ENABLED,
-
-            maxAttempts:
-                MAX_LOGIN_ATTEMPTS,
-
-            blockDuration:
-                BASIC_AUTH_BLOCK_DURATION_MS,
-
-            sessionDuration:
-                BASIC_AUTH_SESSION_MS,
-        },
-
-        globalChat: {
-            enabled:
-                true,
-
-            maxMessages:
-                GLOBAL_CHAT_MAX_MESSAGES,
-
-            maxNameLength:
-                GLOBAL_CHAT_MAX_NAME_LENGTH,
-
-            maxMessageLength:
-                GLOBAL_CHAT_MAX_MESSAGE_LENGTH,
-        },
-
-        apiKeySecret:
-            apiKeySecret,
-
-        mattermost:
-            mattermostCfg.enabled
-                ? mattermostCfg
-                : false,
-
-        redirectURL:
-            redirectURL,
-
-        environment:
-            process.env.NODE_ENV ||
-            'development',
-
-        app_version:
-            packageJson.version,
-
-        nodeVersion:
-            process.versions.node,
-    };
-}
-
-/* ============================================================
-   NGROK
-============================================================ */
-
-async function ngrokStart() {
-    try {
-        await ngrok.authtoken(
-            ngrokAuthToken
-        );
-
-        const listener =
-            await ngrok.forward({
-                addr:
-                    port,
-            });
-
-        const tunnelUrl =
-            listener.url();
-
-        log.info(
-            'Server config',
-            getServerConfig(
-                tunnelUrl
-            )
-        );
-    } catch (error) {
-        log.warn(
-            'Ngrok Start error',
-            error
-        );
-
-        try {
-            await ngrok.kill();
-        } catch (
-            killError
-        ) {
-            log.warn(
-                'Ngrok kill error',
-                killError
-            );
-        }
-
-        process.exit(1);
-    }
-}
-
-/* ============================================================
-   SERVER START
-============================================================ */
-
-server.listen(
-    port,
-    null,
-    () => {
-        if (
-            ngrokEnabled &&
-            ngrokAuthToken
-        ) {
-            ngrokStart();
-        } else {
-            log.debug(
-                'settings',
-                getServerConfig()
-            );
-        }
-
-        log.info(
-            `Loki Live server started on port ${port}`
-        );
-
-        log.info(
-            'GLOBAL PUBLIC CHAT ENABLED'
-        );
-    }
-);
-
-/* ============================================================
-   CLIENT ERROR
-============================================================ */
-
-server.on(
-    'clientError',
-    (
-        err,
-        socket
-    ) => {
-        log.warn(
-            'Client connection error',
-            {
-                error:
-                    err.message,
-
-                code:
-                    err.code,
-            }
-        );
 
         if (
-            socket &&
-            !socket.destroyed
+            !isAuthenticated(req)
         ) {
-            socket.end(
-                'HTTP/1.1 400 Bad Request\r\n\r\n'
-            );
+
+            return res
+                .status(401)
+                .json({
+                    error:
+                        'Authentication required'
+                });
+
         }
+
+
+        SITE = {
+            ...DEFAULTS
+        };
+
+
+        return res.json({
+            success:true
+        });
+
     }
-);
 
-/* ============================================================
-   SOCKET.IO ERROR
-============================================================ */
 
-io.on(
-    'error',
-    error => {
-        log.error(
-            'Socket.IO error:',
-            error
+    /*
+    HTML
+    */
+
+    if (
+        req.method ===
+        'GET'
+        &&
+        isHTMLRequest(req)
+    ) {
+
+        return interceptHTML(
+            req,
+            res,
+            next
         );
+
     }
-);
 
-/* ============================================================
-   SOCKET.IO CONNECTION
-============================================================ */
 
-io.on(
-    'connection',
-    socket => {
+    next();
 
-        log.debug(
-            `[${socket.id}] connection accepted`
-        );
+}
 
-        socket.channels = {};
-
-        sockets[
-            socket.id
-        ] = socket;
-
-        /* ====================================================
-           GLOBAL PUBLIC CHAT
-        ==================================================== */
-
-        /*
-         * عند دخول أي مستخدم للموقع،
-         * أرسل له سجل الدردشة العامة.
-         */
-        socket.emit(
-            'globalChatHistory',
-            globalChatMessages
-        );
-
-        /*
-         * إرسال معلومات عدد المتصلين بالدردشة.
-         */
-        io.emit(
-            'globalChatOnline',
-            io.engine.clientsCount
-        );
-
-        /*
-         * استقبال رسالة الدردشة العامة.
-         *
-         * لا نتحقق من room هنا.
-         *
-         * لذلك الدردشة مستقلة تماماً
-         * عن غرف الفيديو.
-         */
-        socket.on(
-            'globalChatSend',
-            data => {
-
-                try {
-
-                    if (
-                        !data ||
-                        typeof data !==
-                            'object'
-                    ) {
-                        return;
-                    }
-
-                    /*
-                     * يمكن للواجهة إرسال:
-                     *
-                     * {
-                     *   name: "Ahmed",
-                     *   message: "مرحبا"
-                     * }
-                     */
-                    const name =
-                        sanitizeChatName(
-                            data.name
-                        );
-
-                    const message =
-                        sanitizeChatMessage(
-                            data.message
-                        );
-
-                    if (
-                        !message
-                    ) {
-                        return socket.emit(
-                            'globalChatSystem',
-                            {
-                                type:
-                                    'error',
-
-                                message:
-                                    'الرسالة فارغة.',
-                            }
-                        );
-                    }
-
-                    /*
-                     * منع الرسائل الطويلة.
-                     */
-                    if (
-                        String(
-                            data.message ||
-                                ''
-                        ).length >
-                        GLOBAL_CHAT_MAX_MESSAGE_LENGTH
-                    ) {
-                        return socket.emit(
-                            'globalChatSystem',
-                            {
-                                type:
-                                    'error',
-
-                                message:
-                                    `الحد الأقصى للرسالة ${GLOBAL_CHAT_MAX_MESSAGE_LENGTH} حرف.`,
-                            }
-                        );
-                    }
-
-                    const chatMessage =
-                        addGlobalChatMessage(
-                            name,
-                            message
-                        );
-
-                    if (
-                        !chatMessage
-                    ) {
-                        return;
-                    }
-
-                    /*
-                     * إرسال الرسالة للجميع.
-                     *
-                     * هذا هو الجزء الذي يجعل
-                     * الدردشة عامة خارج الغرفة.
-                     */
-                    io.emit(
-                        'globalChatMessage',
-                        chatMessage
-                    );
-
-                    /*
-                     * تحديث عدد المتصلين.
-                     */
-                    io.emit(
-                        'globalChatOnline',
-                        io.engine.clientsCount
-                    );
-
-                    log.info(
-                        '[GLOBAL CHAT]',
-                        {
-                            socketId:
-                                socket.id,
-
-                            name:
-                                chatMessage.name,
-
-                            messageLength:
-                                chatMessage.message.length,
-                        }
-                    );
-
-                } catch (error) {
-
-                    log.error(
-                        'Global chat message error',
-                        error
-                    );
-
-                    socket.emit(
-                        'globalChatSystem',
-                        {
-                            type:
-                                'error',
-
-                            message:
-                                'حدث خطأ أثناء إرسال الرسالة.',
-                        }
-                    );
-                }
-            }
-        );
-
-        /*
-         * إشعار الكتابة.
-         *
-         * لا نحفظه في الملف.
-         */
-        socket.on(
-            'globalChatTyping',
-            data => {
-
-                const name =
-                    sanitizeChatName(
-                        data?.name
-                    );
-
-                socket.broadcast.emit(
-                    'globalChatTyping',
-                    {
-                        name:
-                            name,
-
-                        typing:
-                            Boolean(
-                                data?.typing
-                            ),
-                    }
-                );
-            }
-        );
-
-        /* ====================================================
-           VIDEO JOIN
-        ==================================================== */
-
-        socket.on(
-            'join',
-            cfg => {
-
-                const config =
-                    checkXSS(
-                        cfg
-                    );
-
-                const channel =
-                    config.channel;
-
-                if (
-                    !channel
-                ) {
-                    return log.warn(
-                        `[${socket.id}] join rejected: missing channel`
-                    );
-                }
-
-                if (
-                    channel in
-                    socket.channels
-                ) {
-                    return;
-                }
-
-                if (
-                    !(
-                        channel in
-                        channels
-                    )
-                ) {
-                    channels[
-                        channel
-                    ] = {};
-                }
-
-                if (
-                    !(
-                        channel in
-                        peers
-                    )
-                ) {
-                    peers[
-                        channel
-                    ] = {};
-                }
-
-                peers[
-                    channel
-                ][
-                    socket.id
-                ] =
-                    config.peerInfo;
-
-                addPeerTo(
-                    channel
-                );
-
-                channels[
-                    channel
-                ][
-                    socket.id
-                ] = socket;
-
-                socket.channels[
-                    channel
-                ] = channel;
-
-                const peerCounts =
-                    Object.keys(
-                        peers[
-                            channel
-                        ]
-                    ).length;
-
-                sendToPeer(
-                    socket.id,
-                    sockets,
-                    'serverInfo',
-                    {
-                        roomPeersCount:
-                            peerCounts,
-
-                        redirectURL:
-                            redirectURL,
-
-                        surveyURL:
-                            surveyURL,
-                    }
-                );
-
-                if (
-                    peerCounts ===
-                    1
-                ) {
-                    const peerInfo =
-                        config.peerInfo ||
-                        {};
-
-                    const {
-                        peerName,
-                        osName,
-                        osVersion,
-                        browserName,
-                        browserVersion,
-                    } =
-                        peerInfo;
-
-                    nodemailer.sendEmailAlert(
-                        'join',
-                        {
-                            room_id:
-                                channel,
-
-                            peer_name:
-                                peerName,
-
-                            domain:
-                                socket
-                                    .handshake
-                                    .headers
-                                    .host
-                                    ?.split(
-                                        ':'
-                                    )[0] ||
-                                '',
-
-                            os:
-                                osName
-                                    ? `${osName} ${osVersion}`
-                                    : '',
-
-                            browser:
-                                browserName
-                                    ? `${browserName} ${browserVersion}`
-                                    : '',
-                        }
-                    );
-                }
-            }
-        );
-
-        /* ====================================================
-           SHARED ROOM
-        ==================================================== */
-
-        function peersShareRoom(
-            peerId
-        ) {
-            if (
-                typeof peerId !==
-                    'string' ||
-                !peerId
-            ) {
-                return false;
-            }
-
-            for (
-                const channel in
-                socket.channels
-            ) {
-                if (
-                    channels[
-                        channel
-                    ] &&
-                    channels[
-                        channel
-                    ][
-                        peerId
-                    ]
-                ) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /* ====================================================
-           RELAY SDP
-        ==================================================== */
-
-        socket.on(
-            'relaySDP',
-            config => {
-
-                if (
-                    !config
-                ) {
-                    return;
-                }
-
-                const {
-                    peerId,
-                    sessionDescription,
-                } =
-                    config;
-
-                if (
-                    !peersShareRoom(
-                        peerId
-                    )
-                ) {
-                    return;
-                }
-
-                sendToPeer(
-                    peerId,
-                    sockets,
-                    'sessionDescription',
-                    {
-                        peerId:
-                            socket.id,
-
-                        sessionDescription:
-                            sessionDescription,
-                    }
-                );
-            }
-        );
-
-        /* ====================================================
-           RELAY ICE
-        ==================================================== */
-
-        socket.on(
-            'relayICE',
-            config => {
-
-                if (
-                    !config
-                ) {
-                    return;
-                }
-
-                const {
-                    peerId,
-                    iceCandidate,
-                } =
-                    config;
-
-                if (
-                    !peersShareRoom(
-                        peerId
-                    )
-                ) {
-                    return;
-                }
-
-                sendToPeer(
-                    peerId,
-                    sockets,
-                    'iceCandidate',
-                    {
-                        peerId:
-                            socket.id,
-
-                        iceCandidate:
-                            iceCandidate,
-                    }
-                );
-            }
-        );
-
-        /* ====================================================
-           PEER STATUS
-        ==================================================== */
-
-        socket.on(
-            'peerStatus',
-            cfg => {
-
-                const config =
-                    checkXSS(
-                        cfg
-                    );
-
-                const {
-                    roomId,
-                    peerName,
-                    element,
-                    active,
-                } =
-                    config;
-
-                if (
-                    peers[
-                        roomId
-                    ]
-                ) {
-                    for (
-                        const peerId in
-                        peers[
-                            roomId
-                        ]
-                    ) {
-
-                        const peer =
-                            peers[
-                                roomId
-                            ][
-                                peerId
-                            ];
-
-                        if (
-                            peer &&
-                            peer.peerName ===
-                                peerName
-                        ) {
-
-                            switch (
-                                element
-                            ) {
-
-                                case 'video':
-
-                                    peer.peerVideo =
-                                        active;
-
-                                    break;
-
-                                case 'audio':
-
-                                    peer.peerAudio =
-                                        active;
-
-                                    break;
-
-                                case 'screen':
-
-                                    peer.peerScreen =
-                                        active;
-
-                                    break;
-                            }
-                        }
-                    }
-                }
-
-                sendToRoom(
-                    roomId,
-                    socket.id,
-                    'peerStatus',
-                    {
-                        peerId:
-                            socket.id,
-
-                        peerName:
-                            peerName,
-
-                        element:
-                            element,
-
-                        active:
-                            active,
-                    }
-                );
-            }
-        );
-
-        /* ====================================================
-           DISCONNECT
-        ==================================================== */
-
-        socket.on(
-            'disconnect',
-            reason => {
-
-                const joinedChannels =
-                    Object.keys(
-                        socket.channels ||
-                            {}
-                    );
-
-                for (
-                    const channel of
-                        joinedChannels
-                ) {
-                    removePeerFrom(
-                        channel
-                    );
-                }
-
-                for (
-                    const channel in
-                    channels
-                ) {
-                    if (
-                        channels[
-                            channel
-                        ] &&
-                        channels[
-                            channel
-                        ][
-                            socket.id
-                        ]
-                    ) {
-                        delete channels[
-                            channel
-                        ][
-                            socket.id
-                        ];
-                    }
-                }
-
-                for (
-                    const channel in
-                    peers
-                ) {
-                    if (
-                        peers[
-                            channel
-                        ] &&
-                        peers[
-                            channel
-                        ][
-                            socket.id
-                        ]
-                    ) {
-                        delete peers[
-                            channel
-                        ][
-                            socket.id
-                        ];
-                    }
-                }
-
-                delete sockets[
-                    socket.id
-                ];
-
-                /*
-                 * تحديث عدد المتصلين
-                 * بالدردشة العامة.
-                 */
-                io.emit(
-                    'globalChatOnline',
-                    io.engine.clientsCount
-                );
-
-                log.debug(
-                    `[${socket.id}] disconnected`,
-                    {
-                        reason:
-                            reason,
-                    }
-                );
-            }
-        );
-
-        /* ====================================================
-           ADD PEER
-        ==================================================== */
-
-        async function addPeerTo(
-            channel
-        ) {
-            try {
-
-                if (
-                    !channels[
-                        channel
-                    ] ||
-                    !peers[
-                        channel
-                    ]
-                ) {
-                    return;
-                }
-
-                for (
-                    const id in
-                    channels[
-                        channel
-                    ]
-                ) {
-
-                    const peerSocket =
-                        channels[
-                            channel
-                        ][
-                            id
-                        ];
-
-                    if (
-                        !peerSocket ||
-                        typeof peerSocket.emit !==
-                            'function'
-                    ) {
-                        continue;
-                    }
-
-                    await peerSocket.emit(
-                        'addPeer',
-                        {
-                            peerId:
-                                socket.id,
-
-                            peers:
-                                peers[
-                                    channel
-                                ],
-
-                            shouldCreateOffer:
-                                false,
-
-                            iceServers:
-                                iceServers,
-                        }
-                    );
-
-                    socket.emit(
-                        'addPeer',
-                        {
-                            peerId:
-                                id,
-
-                            peers:
-                                peers[
-                                    channel
-                                ],
-
-                            shouldCreateOffer:
-                                true,
-
-                            iceServers:
-                                iceServers,
-                        }
-                    );
-                }
-
-            } catch (error) {
-
-                log.error(
-                    'Error in addPeerTo',
-                    error
-                );
-            }
-        }
-
-        /* ====================================================
-           REMOVE PEER
-        ==================================================== */
-
-        async function removePeerFrom(
-            channel
-        ) {
-
-            if (
-                !(
-                    channel in
-                    socket.channels
-                )
-            ) {
-                return;
-            }
-
-            try {
-
-                const channelSockets =
-                    channels[
-                        channel
-                    ]
-                        ? {
-                              ...channels[
-                                  channel
-                              ],
-                          }
-                        : {};
-
-                delete socket.channels[
-                    channel
-                ];
-
-                if (
-                    channels[
-                        channel
-                    ]
-                ) {
-                    delete channels[
-                        channel
-                    ][
-                        socket.id
-                    ];
-                }
-
-                if (
-                    peers[
-                        channel
-                    ]
-                ) {
-                    delete peers[
-                        channel
-                    ][
-                        socket.id
-                    ];
-                }
-
-                for (
-                    const id in
-                    channelSockets
-                ) {
-
-                    if (
-                        id ===
-                        socket.id
-                    ) {
-                        continue;
-                    }
-
-                    const peerSocket =
-                        channelSockets[
-                            id
-                        ];
-
-                    if (
-                        peerSocket &&
-                        typeof peerSocket.emit ===
-                            'function'
-                    ) {
-                        await peerSocket.emit(
-                            'removePeer',
-                            {
-                                peerId:
-                                    socket.id,
-                            }
-                        );
-                    }
-
-                    if (
-                        !socket.disconnected
-                    ) {
-                        socket.emit(
-                            'removePeer',
-                            {
-                                peerId:
-                                    id,
-                            }
-                        );
-                    }
-                }
-
-                if (
-                    peers[
-                        channel
-                    ] &&
-                    Object.keys(
-                        peers[
-                            channel
-                        ]
-                    ).length ===
-                        0
-                ) {
-
-                    delete peers[
-                        channel
-                    ];
-
-                    delete channels[
-                        channel
-                    ];
-                }
-
-            } catch (error) {
-
-                log.error(
-                    'Error in removePeerFrom',
-                    error
-                );
-            }
-        }
-
-        /* ====================================================
-           SEND TO ROOM
-        ==================================================== */
-
-        async function sendToRoom(
-            roomId,
-            socketId,
-            msg,
-            config = {}
-        ) {
-
-            if (
-                !channels[
-                    roomId
-                ]
-            ) {
-                return;
-            }
-
-            for (
-                const peerId in
-                channels[
-                    roomId
-                ]
-            ) {
-
-                if (
-                    peerId !=
-                    socketId
-                ) {
-
-                    try {
-
-                        const peerSocket =
-                            channels[
-                                roomId
-                            ][
-                                peerId
-                            ];
-
-                        if (
-                            peerSocket
-                        ) {
-                            await peerSocket.emit(
-                                msg,
-                                config
-                            );
-                        }
-
-                    } catch (error) {
-
-                        log.warn(
-                            'Error sending message to room peer',
-                            {
-                                roomId,
-                                peerId,
-                                msg,
-                                error:
-                                    error.message,
-                            }
-                        );
-                    }
-                }
-            }
-        }
-
-        /* ====================================================
-           SEND TO PEER
-        ==================================================== */
-
-        async function sendToPeer(
-            peerId,
-            socketsMap,
-            msg,
-            config = {}
-        ) {
-
-            if (
-                peerId in
-                socketsMap
-            ) {
-
-                try {
-
-                    await socketsMap[
-                        peerId
-                    ].emit(
-                        msg,
-                        config
-                    );
-
-                } catch (error) {
-
-                    log.warn(
-                        'Error sending message to peer',
-                        {
-                            peerId,
-                            msg,
-                            error:
-                                error.message,
-                        }
-                    );
-                }
-            }
-        }
-
-        /* ====================================================
-           ACTIVE ROOMS
-        ==================================================== */
-
-        function getActiveRooms() {
-
-            const roomPeersArray =
-                [];
-
-            for (
-                const roomId in
-                peers
-            ) {
-
-                if (
-                    Object.prototype.hasOwnProperty.call(
-                        peers,
-                        roomId
-                    )
-                ) {
-
-                    const peersCount =
-                        Object.keys(
-                            peers[
-                                roomId
-                            ]
-                        ).length;
-
-                    roomPeersArray.push(
-                        {
-                            roomId:
-                                roomId,
-
-                            peersCount:
-                                peersCount,
-                        }
-                    );
-                }
-            }
-
-            return roomPeersArray;
-        }
-    }
-);
-
-/* ============================================================
-   PERIODIC CLEANUP
-============================================================ */
 
 /*
- * تنظيف سجلات محاولات الدخول القديمة
- * حتى لا تكبر الـ Map بلا حدود.
- */
-setInterval(
-    () => {
+============================================================
+ LOGIN API
+============================================================
+*/
 
-        const now =
-            Date.now();
+function loginAPI(
+    req,
+    res
+) {
 
-        for (
-            const [
-                ip,
-                record,
-            ] of loginSecurity
-        ) {
+    const body =
+        req.body &&
+        typeof req.body ===
+            'object'
+        ? req.body
+        : {};
+
+
+    const username =
+        safeString(
+            body.username,
+            200
+        );
+
+    const password =
+        safeString(
+            body.password,
+            500
+        );
+
+
+    if (
+        !verifyLogin(
+            username,
+            password
+        )
+    ) {
+
+        return res
+            .status(401)
+            .json({
+                error:
+                    'Invalid administrator credentials.'
+            });
+
+    }
+
+
+    const token =
+        createSession();
+
+
+    res.setHeader(
+        'Set-Cookie',
+
+        ADMIN_COOKIE +
+        '=' +
+        encodeURIComponent(
+            token
+        ) +
+        '; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400'
+    );
+
+
+    return res.json({
+        success:true
+    });
+
+}
+
+
+/*
+============================================================
+ SAVE API
+============================================================
+*/
+
+function saveAPI(
+    req,
+    res
+) {
+
+    const input =
+        req.body &&
+        typeof req.body ===
+            'object'
+        ? req.body
+        : {};
+
+
+    Object.keys(
+        DEFAULTS
+    )
+    .forEach(
+        key => {
 
             if (
-                !record.blockedUntil &&
-                record.attempts === 0
+                !Object.prototype
+                    .hasOwnProperty
+                    .call(
+                        input,
+                        key
+                    )
             ) {
-                loginSecurity.delete(
-                    ip
-                );
 
-                continue;
+                return;
+
             }
+
+
+            const value =
+                input[key];
+
 
             if (
-                record.blockedUntil &&
-                now >=
-                    record.blockedUntil
+                typeof DEFAULTS[key] ===
+                'boolean'
             ) {
-                loginSecurity.delete(
-                    ip
-                );
+
+                SITE[key] =
+                    value === true ||
+                    value === 'true';
+
+            } else {
+
+                SITE[key] =
+                    safeString(
+                        value,
+                        100000
+                    );
+
             }
+
         }
+    );
 
-    },
-    60 * 60 * 1000
-);
 
-/* ============================================================
-   GLOBAL ERROR HANDLING
-============================================================ */
-
-process.on(
-    'uncaughtException',
-    error => {
-
-        log.error(
-            'UNCAUGHT EXCEPTION',
-            error
+    SITE.primaryColor =
+        safeColor(
+            SITE.primaryColor,
+            DEFAULTS.primaryColor
         );
-    }
-);
 
-process.on(
-    'unhandledRejection',
-    error => {
 
-        log.error(
-            'UNHANDLED REJECTION',
-            error
+    SITE.secondaryColor =
+        safeColor(
+            SITE.secondaryColor,
+            DEFAULTS.secondaryColor
         );
-    }
-);
 
-/* ============================================================
-   END
-============================================================ */
+
+    SITE.backgroundColor =
+        safeColor(
+            SITE.backgroundColor,
+            DEFAULTS.backgroundColor
+        );
+
+
+    SITE.textColor =
+        safeColor(
+            SITE.textColor,
+            DEFAULTS.textColor
+        );
+
+
+    return res.json({
+        success:true
+    });
+
+}
+
+
+/*
+============================================================
+ EXPORT
+============================================================
+*/
+
+module.exports =
+    middleware;
