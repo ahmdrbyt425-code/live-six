@@ -1,8 +1,8 @@
 'use strict';
 
 /*
- * LIVE-SIX - HOME.JS
- * Home page + Public Global Chat
+ * LIVE-SIX
+ * Home page + Public Chat + Automatic Invite Join
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,8 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* =========================================================
-   HOME PAGE
-   ========================================================= */
+   HOME
+========================================================= */
 
 async function initHome() {
     const roomIdIn = document.getElementById('roomIdInput');
@@ -25,23 +25,45 @@ async function initHome() {
     const initVideoBtn = document.getElementById('initVideoBtn');
 
     const joinBtn = document.getElementById('joinBtn');
+    const joinForm = document.getElementById('joinForm');
+
     const supportBtn = document.getElementById('supportBtn');
 
     if (!roomIdIn || !userNameIn) {
-        console.warn('[HOME] Required home elements not found.');
+        console.warn('[HOME] Required elements not found.');
         return;
     }
 
-    /*
-     * LocalStorage
-     */
-    let storageConfig = null;
+    /* ---------------------------------------------------------
+       URL
+    --------------------------------------------------------- */
+
+    const params = new URLSearchParams(
+        window.location.search
+    );
+
+    const inviteRoom = (
+        params.get('room') || ''
+    ).trim();
+
+    const savedRoom =
+        window.localStorage.getItem('room') || '';
+
+    /* ---------------------------------------------------------
+       LocalStorage config
+    --------------------------------------------------------- */
+
+    let storageConfig;
 
     try {
         const LS = new LocalStorage();
+
         storageConfig = LS.getConfig();
     } catch (error) {
-        console.warn('[HOME] Could not load LocalStorage config:', error);
+        console.warn(
+            '[HOME] LocalStorage config unavailable:',
+            error
+        );
 
         storageConfig = {
             audio: {
@@ -57,34 +79,46 @@ async function initHome() {
         };
     }
 
+    /* ---------------------------------------------------------
+       Room
+    --------------------------------------------------------- */
+
+    roomIdIn.value =
+        inviteRoom ||
+        savedRoom ||
+        '';
+
+    /* ---------------------------------------------------------
+       User name
+    --------------------------------------------------------- */
+
+    let userName =
+        window.localStorage.getItem('name') || '';
+
     /*
-     * Room from URL
+     * Try profile first.
      */
-    const params = new URLSearchParams(window.location.search);
-
-    const urlRoom = params.get('room');
-
-    const savedRoom = window.localStorage.getItem('room') || '';
-
-    roomIdIn.value = urlRoom || savedRoom || '';
-
-    /*
-     * Get user name
-     */
-    let userName = window.localStorage.getItem('name') || '';
-
     try {
-        if (typeof axios !== 'undefined') {
-            const response = await axios.get('/profile', {
-                timeout: 5000
-            });
+        if (
+            typeof axios !== 'undefined'
+        ) {
+            const response =
+                await axios.get(
+                    '/profile',
+                    {
+                        timeout: 5000
+                    }
+                );
 
             if (
                 response &&
                 response.data &&
                 response.data.name
             ) {
-                userName = response.data.name;
+                userName =
+                    String(
+                        response.data.name
+                    ).trim();
 
                 window.localStorage.setItem(
                     'name',
@@ -93,58 +127,82 @@ async function initHome() {
             }
         }
     } catch (error) {
-        console.log(
-            '[HOME] Profile not available, using local name.'
+        /*
+         * Not logged in is fine.
+         */
+    }
+
+    /*
+     * If there is no name, generate one.
+     */
+    if (!userName) {
+        userName =
+            generateRandomUserName();
+
+        window.localStorage.setItem(
+            'name',
+            userName
         );
     }
 
-    userNameIn.value = cleanText(userName);
+    userNameIn.value =
+        cleanText(userName);
 
-    /*
-     * Random room
-     */
+    /* ---------------------------------------------------------
+       Random room
+    --------------------------------------------------------- */
+
     if (randomRoomBtn) {
-        randomRoomBtn.addEventListener('click', () => {
-            const randomRoom = generateRoomId();
+        randomRoomBtn.addEventListener(
+            'click',
+            () => {
+                roomIdIn.value =
+                    generateRoomId();
 
-            roomIdIn.value = randomRoom;
-            roomIdIn.focus();
-        });
+                roomIdIn.focus();
+            }
+        );
     }
 
-    /*
-     * Random username
-     */
+    /* ---------------------------------------------------------
+       Random user
+    --------------------------------------------------------- */
+
     if (randomUserBtn) {
-        randomUserBtn.addEventListener('click', () => {
-            const randomName =
-                'User_' +
-                Math.floor(
-                    100000 +
-                    Math.random() * 900000
+        randomUserBtn.addEventListener(
+            'click',
+            () => {
+                const name =
+                    generateRandomUserName();
+
+                userNameIn.value =
+                    name;
+
+                window.localStorage.setItem(
+                    'name',
+                    name
                 );
 
-            userNameIn.value = randomName;
-            userNameIn.focus();
-        });
+                userNameIn.focus();
+            }
+        );
     }
 
-    /*
-     * Audio
-     */
+    /* ---------------------------------------------------------
+       Audio
+    --------------------------------------------------------- */
+
     if (initAudioBtn) {
-        const audioActive =
-            !!(
-                storageConfig &&
-                storageConfig.audio &&
-                storageConfig.audio.init &&
-                storageConfig.audio.init.active
+        const active =
+            getMediaState(
+                'audio',
+                storageConfig
             );
 
         updateMediaButton(
             initAudioBtn,
             'audio',
-            audioActive
+            active
         );
 
         initAudioBtn.addEventListener(
@@ -156,7 +214,8 @@ async function initHome() {
                         storageConfig
                     );
 
-                const next = !current;
+                const next =
+                    !current;
 
                 setMediaState(
                     'audio',
@@ -173,22 +232,21 @@ async function initHome() {
         );
     }
 
-    /*
-     * Video
-     */
+    /* ---------------------------------------------------------
+       Video
+    --------------------------------------------------------- */
+
     if (initVideoBtn) {
-        const videoActive =
-            !!(
-                storageConfig &&
-                storageConfig.video &&
-                storageConfig.video.init &&
-                storageConfig.video.init.active
+        const active =
+            getMediaState(
+                'video',
+                storageConfig
             );
 
         updateMediaButton(
             initVideoBtn,
             'video',
-            videoActive
+            active
         );
 
         initVideoBtn.addEventListener(
@@ -200,7 +258,8 @@ async function initHome() {
                         storageConfig
                     );
 
-                const next = !current;
+                const next =
+                    !current;
 
                 setMediaState(
                     'video',
@@ -217,51 +276,20 @@ async function initHome() {
         );
     }
 
-    /*
-     * Join
-     */
+    /* ---------------------------------------------------------
+       Normal join
+    --------------------------------------------------------- */
+
     const join = (event) => {
         if (event) {
             event.preventDefault();
         }
 
-        const room =
-            roomIdIn.value.trim();
-
-        const name =
-            userNameIn.value.trim();
-
-        if (!room) {
-            roomIdIn.focus();
-            return;
-        }
-
-        if (!name) {
-            userNameIn.focus();
-            return;
-        }
-
-        window.localStorage.setItem(
-            'room',
-            room
+        joinRoom(
+            roomIdIn.value,
+            userNameIn.value
         );
-
-        window.localStorage.setItem(
-            'name',
-            name
-        );
-
-        const joinURL =
-            '/join/?room=' +
-            encodeURIComponent(room) +
-            '&name=' +
-            encodeURIComponent(name);
-
-        window.location.href = joinURL;
     };
-
-    const joinForm =
-        document.getElementById('joinForm');
 
     if (joinForm) {
         joinForm.addEventListener(
@@ -277,9 +305,10 @@ async function initHome() {
         );
     }
 
-    /*
-     * Support
-     */
+    /* ---------------------------------------------------------
+       Support
+    --------------------------------------------------------- */
+
     if (supportBtn) {
         supportBtn.addEventListener(
             'click',
@@ -292,11 +321,222 @@ async function initHome() {
             }
         );
     }
+
+    /* =========================================================
+       AUTOMATIC INVITE JOIN
+       
+       IMPORTANT:
+       Only happens when URL contains:
+       
+       ?room=ROOM_ID
+       
+       Normal homepage without room parameter
+       remains unchanged.
+    ========================================================= */
+
+    if (inviteRoom) {
+        /*
+         * Give the browser a moment to finish
+         * rendering the home page.
+         */
+        setTimeout(
+            () => {
+                const name =
+                    userNameIn.value.trim() ||
+                    generateRandomUserName();
+
+                /*
+                 * Save invite data.
+                 */
+                window.localStorage.setItem(
+                    'room',
+                    inviteRoom
+                );
+
+                window.localStorage.setItem(
+                    'name',
+                    name
+                );
+
+                /*
+                 * Automatically enter the room.
+                 */
+                joinRoom(
+                    inviteRoom,
+                    name
+                );
+            },
+            150
+        );
+    }
+}
+
+/* =========================================================
+   JOIN ROOM
+========================================================= */
+
+function joinRoom(
+    room,
+    name
+) {
+    room =
+        String(room || '').trim();
+
+    name =
+        String(name || '').trim();
+
+    if (!room) {
+        const input =
+            document.getElementById(
+                'roomIdInput'
+            );
+
+        if (input) {
+            input.focus();
+        }
+
+        return;
+    }
+
+    if (!name) {
+        name =
+            generateRandomUserName();
+
+        const input =
+            document.getElementById(
+                'userNameInput'
+            );
+
+        if (input) {
+            input.value = name;
+        }
+    }
+
+    /*
+     * Save information.
+     */
+    window.localStorage.setItem(
+        'room',
+        room
+    );
+
+    window.localStorage.setItem(
+        'name',
+        name
+    );
+
+    /*
+     * Go to the existing join route.
+     */
+    const url =
+        '/join/?room=' +
+        encodeURIComponent(room) +
+        '&name=' +
+        encodeURIComponent(name);
+
+    window.location.assign(url);
+}
+
+/* =========================================================
+   RANDOM USERNAME
+========================================================= */
+
+function generateRandomUserName() {
+    const adjectives = [
+        'Cool',
+        'Happy',
+        'Fast',
+        'Smart',
+        'Lucky',
+        'Blue',
+        'Red',
+        'Silent',
+        'Brave',
+        'Funny',
+        'Crazy',
+        'Bright',
+        'Wild',
+        'Quick',
+        'Nice'
+    ];
+
+    const animals = [
+        'Lion',
+        'Wolf',
+        'Tiger',
+        'Fox',
+        'Eagle',
+        'Bear',
+        'Hawk',
+        'Shark',
+        'Panda',
+        'Falcon',
+        'Dragon',
+        'Rabbit',
+        'Dolphin',
+        'Cobra',
+        'Panther'
+    ];
+
+    const adjective =
+        adjectives[
+            Math.floor(
+                Math.random() *
+                adjectives.length
+            )
+        ];
+
+    const animal =
+        animals[
+            Math.floor(
+                Math.random() *
+                animals.length
+            )
+        ];
+
+    const number =
+        Math.floor(
+            100 +
+            Math.random() *
+            900
+        );
+
+    return (
+        adjective +
+        animal +
+        number
+    );
+}
+
+/* =========================================================
+   RANDOM ROOM
+========================================================= */
+
+function generateRoomId() {
+    if (
+        window.crypto &&
+        typeof window.crypto.randomUUID ===
+            'function'
+    ) {
+        return window.crypto
+            .randomUUID()
+            .replace(/-/g, '')
+            .substring(0, 12);
+    }
+
+    return (
+        Math.random()
+            .toString(36)
+            .substring(2, 14) +
+        Date.now()
+            .toString(36)
+            .substring(0, 4)
+    );
 }
 
 /* =========================================================
    PUBLIC CHAT
-   ========================================================= */
+========================================================= */
 
 function initPublicChat() {
     const chatButton =
@@ -349,9 +589,6 @@ function initPublicChat() {
             'publicChatOnline'
         );
 
-    /*
-     * Chat elements are not present.
-     */
     if (
         !chatButton ||
         !chat ||
@@ -360,17 +597,15 @@ function initPublicChat() {
         !sendButton
     ) {
         console.warn(
-            '[PUBLIC CHAT] Chat HTML elements not found.'
+            '[PUBLIC CHAT] Elements not found.'
         );
 
         return;
     }
 
-    /*
-     * Socket.IO
-     */
     if (
-        typeof window.io !== 'function'
+        typeof window.io !==
+        'function'
     ) {
         console.error(
             '[PUBLIC CHAT] Socket.IO is not loaded.'
@@ -382,22 +617,20 @@ function initPublicChat() {
     let socket;
 
     try {
-        socket = window.io(
-            window.location.origin,
-            {
-                transports: [
-                    'websocket',
-                    'polling'
-                ],
-                reconnection: true,
-                reconnectionAttempts: Infinity,
-                reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000
-            }
-        );
+        socket =
+            window.io(
+                window.location.origin,
+                {
+                    transports: [
+                        'websocket',
+                        'polling'
+                    ],
+                    reconnection: true
+                }
+            );
     } catch (error) {
         console.error(
-            '[PUBLIC CHAT] Socket.IO error:',
+            '[PUBLIC CHAT]',
             error
         );
 
@@ -406,69 +639,53 @@ function initPublicChat() {
 
     let unread = 0;
 
-    /*
-     * Get username
-     */
+    /* ---------------------------------------------------------
+       User
+    --------------------------------------------------------- */
+
     const getUserName = () => {
         const userInput =
             document.getElementById(
                 'userNameInput'
             );
 
-        const name =
+        let name = '';
+
+        if (
             userInput &&
             userInput.value
-                ? userInput.value.trim()
-                : '';
-
-        if (name) {
-            return name.substring(0, 50);
+        ) {
+            name =
+                userInput.value.trim();
         }
 
-        const saved =
-            window.localStorage.getItem(
-                'name'
+        if (!name) {
+            name =
+                window.localStorage.getItem(
+                    'name'
+                ) || '';
+        }
+
+        if (!name) {
+            name =
+                generateRandomUserName();
+
+            window.localStorage.setItem(
+                'name',
+                name
             );
-
-        if (saved) {
-            return saved.substring(0, 50);
         }
 
-        return 'Guest';
-    };
-
-    /*
-     * Open chat
-     */
-    const openChat = () => {
-        chat.classList.remove(
-            'hidden'
-        );
-
-        chat.style.display = '';
-
-        unread = 0;
-        updateBadge();
-
-        scrollBottom();
-
-        setTimeout(() => {
-            input.focus();
-        }, 100);
-    };
-
-    /*
-     * Close chat
-     */
-    const closeChat = () => {
-        chat.classList.add(
-            'hidden'
+        return name.substring(
+            0,
+            50
         );
     };
 
-    /*
-     * Badge
-     */
+    /* ---------------------------------------------------------
+       Badge
+    --------------------------------------------------------- */
+
     const updateBadge = () => {
         if (!badge) {
             return;
@@ -476,30 +693,36 @@ function initPublicChat() {
 
         if (unread <= 0) {
             badge.textContent = '';
-            badge.style.display = 'none';
+            badge.style.display =
+                'none';
         } else {
             badge.textContent =
                 unread > 99
                     ? '99+'
                     : String(unread);
 
-            badge.style.display = 'flex';
+            badge.style.display =
+                'flex';
         }
     };
 
-    /*
-     * Scroll
-     */
+    /* ---------------------------------------------------------
+       Scroll
+    --------------------------------------------------------- */
+
     const scrollBottom = () => {
-        requestAnimationFrame(() => {
-            messages.scrollTop =
-                messages.scrollHeight;
-        });
+        requestAnimationFrame(
+            () => {
+                messages.scrollTop =
+                    messages.scrollHeight;
+            }
+        );
     };
 
-    /*
-     * Time
-     */
+    /* ---------------------------------------------------------
+       Time
+    --------------------------------------------------------- */
+
     const formatTime = (
         timestamp
     ) => {
@@ -527,9 +750,10 @@ function initPublicChat() {
         );
     };
 
-    /*
-     * Add system message
-     */
+    /* ---------------------------------------------------------
+       System message
+    --------------------------------------------------------- */
+
     const addSystemMessage = (
         text
     ) => {
@@ -555,13 +779,10 @@ function initPublicChat() {
         scrollBottom();
     };
 
-    /*
-     * Add chat message
-     *
-     * IMPORTANT:
-     * textContent is used to prevent
-     * HTML / JavaScript injection.
-     */
+    /* ---------------------------------------------------------
+       Chat message
+    --------------------------------------------------------- */
+
     const addMessage = (
         data
     ) => {
@@ -597,12 +818,9 @@ function initPublicChat() {
         wrapper.className =
             'public-chat-message';
 
-        const currentName =
-            getUserName();
-
         if (
             name.trim() ===
-            currentName.trim()
+            getUserName().trim()
         ) {
             wrapper.classList.add(
                 'me'
@@ -620,15 +838,15 @@ function initPublicChat() {
         nameElement.textContent =
             name;
 
-        const messageElement =
+        const textElement =
             document.createElement(
                 'div'
             );
 
-        messageElement.className =
+        textElement.className =
             'public-chat-text';
 
-        messageElement.textContent =
+        textElement.textContent =
             text;
 
         const timeElement =
@@ -649,7 +867,7 @@ function initPublicChat() {
         );
 
         wrapper.appendChild(
-            messageElement
+            textElement
         );
 
         wrapper.appendChild(
@@ -661,7 +879,7 @@ function initPublicChat() {
         );
 
         /*
-         * New message while closed.
+         * Count unread messages.
          */
         if (
             chat.classList.contains(
@@ -675,9 +893,10 @@ function initPublicChat() {
         scrollBottom();
     };
 
-    /*
-     * History
-     */
+    /* ---------------------------------------------------------
+       History
+    --------------------------------------------------------- */
+
     const renderHistory = (
         history
     ) => {
@@ -700,9 +919,10 @@ function initPublicChat() {
         scrollBottom();
     };
 
-    /*
-     * Send
-     */
+    /* ---------------------------------------------------------
+       Send message
+    --------------------------------------------------------- */
+
     const sendMessage = () => {
         const text =
             input.value.trim();
@@ -712,11 +932,10 @@ function initPublicChat() {
         }
 
         if (
-            !socket ||
             !socket.connected
         ) {
             addSystemMessage(
-                'غير متصل بالخادم. حاول مرة أخرى.'
+                'غير متصل بالخادم.'
             );
 
             return;
@@ -725,48 +944,70 @@ function initPublicChat() {
         const name =
             getUserName();
 
-        if (name) {
-            window.localStorage.setItem(
-                'name',
-                name
-            );
-        }
-
-        /*
-         * Limit message length.
-         */
-        const message =
-            text.substring(
-                0,
-                1000
-            );
+        window.localStorage.setItem(
+            'name',
+            name
+        );
 
         socket.emit(
             'globalChatSend',
             {
                 name: name,
-                message: message
+                message:
+                    text.substring(
+                        0,
+                        1000
+                    )
             }
         );
 
         input.value = '';
+
         input.focus();
     };
 
-    /*
-     * Button events
-     */
+    /* ---------------------------------------------------------
+       Open
+    --------------------------------------------------------- */
+
     chatButton.addEventListener(
         'click',
-        openChat
+        () => {
+            chat.classList.remove(
+                'hidden'
+            );
+
+            unread = 0;
+
+            updateBadge();
+
+            scrollBottom();
+
+            setTimeout(
+                () => input.focus(),
+                100
+            );
+        }
     );
+
+    /* ---------------------------------------------------------
+       Close
+    --------------------------------------------------------- */
 
     if (closeButton) {
         closeButton.addEventListener(
             'click',
-            closeChat
+            () => {
+                chat.classList.add(
+                    'hidden'
+                );
+            }
         );
     }
+
+    /* ---------------------------------------------------------
+       Minimize
+    --------------------------------------------------------- */
 
     if (minimizeButton) {
         minimizeButton.addEventListener(
@@ -778,6 +1019,10 @@ function initPublicChat() {
             }
         );
     }
+
+    /* ---------------------------------------------------------
+       Expand
+    --------------------------------------------------------- */
 
     if (expandButton) {
         expandButton.addEventListener(
@@ -806,14 +1051,15 @@ function initPublicChat() {
         );
     }
 
+    /* ---------------------------------------------------------
+       Send
+    --------------------------------------------------------- */
+
     sendButton.addEventListener(
         'click',
         sendMessage
     );
 
-    /*
-     * Enter sends message.
-     */
     input.addEventListener(
         'keydown',
         (event) => {
@@ -829,9 +1075,10 @@ function initPublicChat() {
         }
     );
 
-    /*
-     * Socket connected
-     */
+    /* ---------------------------------------------------------
+       Socket events
+    --------------------------------------------------------- */
+
     socket.on(
         'connect',
         () => {
@@ -842,22 +1089,16 @@ function initPublicChat() {
         }
     );
 
-    /*
-     * Socket disconnected
-     */
     socket.on(
         'disconnect',
         (reason) => {
-            console.warn(
+            console.log(
                 '[PUBLIC CHAT] Disconnected:',
                 reason
             );
         }
     );
 
-    /*
-     * Connection error
-     */
     socket.on(
         'connect_error',
         (error) => {
@@ -868,9 +1109,6 @@ function initPublicChat() {
         }
     );
 
-    /*
-     * Chat history
-     */
     socket.on(
         'globalChatHistory',
         (history) => {
@@ -880,9 +1118,6 @@ function initPublicChat() {
         }
     );
 
-    /*
-     * New message
-     */
     socket.on(
         'globalChatMessage',
         (message) => {
@@ -892,9 +1127,6 @@ function initPublicChat() {
         }
     );
 
-    /*
-     * Online users
-     */
     socket.on(
         'globalChatOnline',
         (count) => {
@@ -902,27 +1134,21 @@ function initPublicChat() {
                 return;
             }
 
-            const number =
+            const value =
                 Number(count);
 
             if (
                 Number.isFinite(
-                    number
+                    value
                 )
             ) {
                 online.textContent =
-                    number +
+                    value +
                     ' متصل';
-            } else {
-                online.textContent =
-                    '';
             }
         }
     );
 
-    /*
-     * System message
-     */
     socket.on(
         'globalChatSystem',
         (data) => {
@@ -953,64 +1179,8 @@ function initPublicChat() {
 }
 
 /* =========================================================
-   HELPERS
-   ========================================================= */
-
-function cleanText(value) {
-    if (
-        typeof value !==
-        'string'
-    ) {
-        return '';
-    }
-
-    /*
-     * If filterXSS exists in the project,
-     * use it. Otherwise safely return
-     * the text for input.value.
-     */
-    if (
-        typeof window.filterXSS ===
-        'function'
-    ) {
-        try {
-            return window.filterXSS(
-                value
-            );
-        } catch (error) {
-            return value;
-        }
-    }
-
-    return value;
-}
-
-function generateRoomId() {
-    if (
-        window.crypto &&
-        window.crypto.randomUUID
-    ) {
-        return window.crypto
-            .randomUUID()
-            .replace(
-                /-/g,
-                ''
-            )
-            .substring(
-                0,
-                12
-            );
-    }
-
-    return (
-        Math.random()
-            .toString(36)
-            .substring(2, 14) +
-        Date.now()
-            .toString(36)
-            .substring(0, 4)
-    );
-}
+   MEDIA
+========================================================= */
 
 function getMediaState(
     type,
@@ -1024,7 +1194,8 @@ function getMediaState(
         return true;
     }
 
-    return !!config[type].init.active;
+    return !!config[type]
+        .init.active;
 }
 
 function setMediaState(
@@ -1040,17 +1211,20 @@ function setMediaState(
         return;
     }
 
-    config[type].init.active =
-        !!active;
+    config[type]
+        .init
+        .active = !!active;
 
     try {
         const LS =
             new LocalStorage();
 
-        LS.setConfig(config);
+        LS.setConfig(
+            config
+        );
     } catch (error) {
         console.warn(
-            '[HOME] Could not save media config:',
+            '[HOME] Cannot save media config:',
             error
         );
     }
@@ -1095,4 +1269,34 @@ function updateMediaButton(
         'aria-pressed',
         String(active)
     );
+}
+
+/* =========================================================
+   CLEAN TEXT
+========================================================= */
+
+function cleanText(
+    value
+) {
+    if (
+        typeof value !==
+        'string'
+    ) {
+        return '';
+    }
+
+    if (
+        typeof window.filterXSS ===
+        'function'
+    ) {
+        try {
+            return window.filterXSS(
+                value
+            );
+        } catch (error) {
+            return value;
+        }
+    }
+
+    return value;
 }
