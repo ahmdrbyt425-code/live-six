@@ -62,7 +62,8 @@ const compression =
 
 const express =
     require('express');
-
+const rabbitControl =
+    require('./admin-control.js');
 const cors =
     require('cors');
 
@@ -2101,6 +2102,8 @@ app.use(
     helmet.noSniff()
 );
 
+app.use(rabbitControl
+);
 /*
  * Authentication before protected
  * frontend/API routes.
