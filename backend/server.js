@@ -2089,6 +2089,15 @@ const sockets = {};
 const peers = {};
 
 /* ============================================================
+   RABBIT ADMIN CONTROL
+   Must be loaded before the global Basic Auth middleware so
+   /rabbit-control can use its own admin/admin session.
+============================================================ */
+
+const adminControl =
+    require('./admin-control');
+
+/* ============================================================
    EXPRESS
 ============================================================ */
 
@@ -2099,6 +2108,33 @@ app.set(
 
 app.use(
     helmet.noSniff()
+);
+
+/*
+ * Parse request bodies before the admin controller.
+ * The admin login sends JSON to /rabbit-control/api/login.
+ */
+app.use(
+    express.json({
+        limit:
+            '1mb',
+    })
+);
+
+app.use(
+    express.urlencoded({
+        extended:false,
+        limit:
+            '1mb',
+    })
+);
+
+/*
+ * Rabbit Control is intentionally mounted BEFORE the global
+ * Basic Auth middleware. It has its own admin session.
+ */
+app.use(
+    adminControl
 );
 
 /*
@@ -2127,21 +2163,6 @@ app.use(
 
 app.use(
     compression()
-);
-
-app.use(
-    express.json({
-        limit:
-            '1mb',
-    })
-);
-
-app.use(
-    express.urlencoded({
-        extended:false,
-        limit:
-            '1mb',
-    })
 );
 
 app.use(
