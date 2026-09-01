@@ -84,12 +84,10 @@ const CONFIG = {
 
     username:
         process.env.ADMIN_CONTROL_USERNAME ||
-        process.env.BASIC_AUTH_USERNAME ||
         'admin',
 
     password:
         process.env.ADMIN_CONTROL_PASSWORD ||
-        process.env.BASIC_AUTH_PASSWORD ||
         'admin',
 
     secret:
@@ -262,21 +260,6 @@ let SITE = {
     ...DEFAULTS,
 };
 
-/* Runtime bridge supplied by server.js. */
-let RUNTIME = {};
-
-function setRuntime(runtime) {
-    RUNTIME = runtime || {};
-}
-
-function runtimeCall(name, ...args) {
-    const fn = RUNTIME && RUNTIME[name];
-    if (typeof fn !== 'function') {
-        throw new Error('Runtime function unavailable: ' + name);
-    }
-    return fn(...args);
-}
-
 
 /*
 ============================================================
@@ -398,57 +381,6 @@ function getCookies(req) {
 
 /*
 ============================================================
- MASTER FILE / RUNTIME HELPERS
-============================================================
-*/
-
-const PROJECT_ROOT = path.resolve(__dirname, '..');
-const BLOCKED_NAMES = new Set(['.env', '.env.local', '.env.production', '.git', 'node_modules']);
-const TEXT_EXTENSIONS = new Set([
-    '.js','.cjs','.mjs','.json','.html','.htm','.css','.scss','.txt','.md','.yaml','.yml','.xml','.svg',
-    '.sh','.bat','.ps1','.conf','.ini','.toml','.ts','.tsx','.jsx','.vue','.php','.py','.java','.c','.cpp','.h'
-]);
-
-function safeProjectPath(input) {
-    const raw = safeString(input, 1000).replace(/\\/g, '/').replace(/^\/+/, '');
-    if (!raw || raw.includes('\0')) throw new Error('Invalid file path.');
-    const parts = raw.split('/');
-    if (parts.some(x => !x || x === '..' || BLOCKED_NAMES.has(x))) throw new Error('Access to this path is blocked.');
-    const resolved = path.resolve(PROJECT_ROOT, raw);
-    if (resolved !== PROJECT_ROOT && !resolved.startsWith(PROJECT_ROOT + path.sep)) throw new Error('Path outside project is blocked.');
-    return resolved;
-}
-
-function displayProjectPath(full) {
-    return path.relative(PROJECT_ROOT, full).split(path.sep).join('/');
-}
-
-function listProjectFiles(dir = PROJECT_ROOT, result = []) {
-    if (result.length >= 5000) return result;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (BLOCKED_NAMES.has(entry.name)) continue;
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) listProjectFiles(full, result);
-        else {
-            const st = fs.statSync(full);
-            result.push({ path: displayProjectPath(full), size: st.size, type: path.extname(entry.name).toLowerCase() || 'file' });
-        }
-        if (result.length >= 5000) break;
-    }
-    return result;
-}
-
-function fileReadableAsText(full) {
-    const ext = path.extname(full).toLowerCase();
-    return TEXT_EXTENSIONS.has(ext) || ext === '';
-}
-
-function jsonBody(req) {
-    return req.body && typeof req.body === 'object' ? req.body : {};
-}
-
-/*
-============================================================
  ADMIN SESSION
 ============================================================
 */
@@ -553,28 +485,43 @@ function verifyLogin(
         return false;
     }
 
-    return (
+    const usernameBuffer =
+        Buffer.from(
+            String(username)
+        );
+
+    const expectedUsernameBuffer =
+        Buffer.from(
+            String(CONFIG.username)
+        );
+
+    const passwordBuffer =
+        Buffer.from(
+            String(password)
+        );
+
+    const expectedPasswordBuffer =
+        Buffer.from(
+            String(CONFIG.password)
+        );
+
+    const usernameOK =
+        usernameBuffer.length ===
+        expectedUsernameBuffer.length &&
         crypto.timingSafeEqual(
-            Buffer.from(
-                String(username)
-            ),
-            Buffer.from(
-                String(
-                    CONFIG.username
-                )
-            )
-        ) &&
+            usernameBuffer,
+            expectedUsernameBuffer
+        );
+
+    const passwordOK =
+        passwordBuffer.length ===
+        expectedPasswordBuffer.length &&
         crypto.timingSafeEqual(
-            Buffer.from(
-                String(password)
-            ),
-            Buffer.from(
-                String(
-                    CONFIG.password
-                )
-            )
-        )
-    );
+            passwordBuffer,
+            expectedPasswordBuffer
+        );
+
+    return usernameOK && passwordOK;
 }
 
 
@@ -1524,8 +1471,6 @@ button {
 
 }
 
-
-.master-table{margin-top:18px;overflow:auto}.master-table table{width:100%;border-collapse:collapse}.master-table th,.master-table td{padding:10px;border-bottom:1px solid rgba(255,255,255,.1);text-align:left;vertical-align:top}.master-table button{padding:7px 10px;border:0;border-radius:8px;background:#a3ff12;color:#071006}.danger{background:#ff4d6d!important;color:#fff!important}.filebar{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.filebar input{min-width:180px}.file-editor{width:100%;min-height:480px;background:#050607;color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:14px;font-family:monospace;resize:vertical}
 </style>
 
 </head>
@@ -1680,26 +1625,6 @@ button {
                 Interface
             </span>
         </button>
-
-        <button data-page="users">👥<span>Users</span></button>
-
-        <button data-page="rooms">🏠<span>Rooms</span></button>
-
-        <button data-page="streams">📡<span>Live Streams</span></button>
-
-        <button data-page="chat">💬<span>Global Chat</span></button>
-
-        <button data-page="files">📁<span>Files &amp; Media</span></button>
-
-        <button data-page="security">🔐<span>Security</span></button>
-
-        <button data-page="seo">🔎<span>SEO / Meta</span></button>
-
-        <button data-page="server">🖥️<span>Server</span></button>
-
-        <button data-page="statistics">📊<span>Statistics</span></button>
-
-        <button data-page="backup">💾<span>Backup / Reset</span></button>
 
         <button
             data-page="code"
@@ -2483,45 +2408,6 @@ button {
 
 </section>
 
-
-<!-- MASTER ADMIN SECTIONS -->
-<section id="users" class="section">
-<div class="card"><h2>👥 Connected Users</h2><p class="sub">Live Socket.IO connections. You can disconnect a user.</p>
-<button class="save" onclick="rabbitLoadUsers()">Refresh Users</button><div id="usersTable" class="master-table"></div></div></section>
-
-<section id="rooms" class="section">
-<div class="card"><h2>🏠 Active Rooms</h2><p class="sub">Active WebRTC rooms and participants.</p>
-<button class="save" onclick="rabbitLoadRooms()">Refresh Rooms</button><div id="roomsTable" class="master-table"></div></div></section>
-
-<section id="streams" class="section">
-<div class="card"><h2>📡 Live Streams</h2><p class="sub">Live sessions are represented by active WebRTC room connections.</p>
-<div id="streamsTable" class="master-table"></div></div></section>
-
-<section id="chat" class="section">
-<div class="card"><h2>💬 Global Chat</h2><p class="sub">Manage the public chat stored by the server.</p>
-<div id="chatStats" class="master-table"></div><button class="save danger" onclick="rabbitClearChat()">Clear Global Chat</button></div></section>
-
-<section id="files" class="section">
-<div class="card"><h2>📁 Files &amp; Media</h2><p class="sub">Browse, edit, upload and delete project files. Protected system folders and secrets are blocked.</p>
-<div class="filebar"><button class="save" onclick="rabbitLoadFiles()">Refresh</button><input id="filePath" placeholder="backend/server.js"><button class="save" onclick="rabbitReadFile()">Open</button><button class="save" onclick="rabbitSaveFile()">Save</button><button class="save" onclick="rabbitDeleteFile()">Delete</button><input type="file" id="fileUpload"><button class="save" onclick="rabbitUploadFile()">Upload</button></div>
-<textarea id="fileEditor" class="file-editor" spellcheck="false"></textarea><div id="filesTable" class="master-table"></div></div></section>
-
-<section id="security" class="section">
-<div class="card"><h2>🔐 Security</h2><p class="sub">Current admin security state.</p><div id="securityTable" class="master-table"></div></div></section>
-
-<section id="seo" class="section">
-<div class="card"><h2>🔎 SEO / Meta</h2><p class="sub">These settings are linked to the website configuration.</p>
-<div class="form-grid"><div class="control"><label>Robots</label><select data-key="robots"><option>index,follow</option><option>noindex,nofollow</option><option>index,nofollow</option></select></div><div class="control"><label>Theme Color</label><input data-key="themeColor"></div><div class="control full"><label>Meta Description</label><textarea data-key="description"></textarea></div></div></div></section>
-
-<section id="server" class="section">
-<div class="card"><h2>🖥️ Server</h2><p class="sub">Runtime information. Restart is intentionally not exposed because Render manages the process lifecycle.</p><div id="serverTable" class="master-table"></div></div></section>
-
-<section id="statistics" class="section">
-<div class="card"><h2>📊 Statistics</h2><p class="sub">Live connection, room and chat statistics.</p><div id="statsTable" class="master-table"></div></div></section>
-
-<section id="backup" class="section">
-<div class="card"><h2>💾 Backup / Reset</h2><p class="sub">Download the current website settings or restore defaults.</p>
-<button class="save" onclick="rabbitBackup()">Download Settings Backup</button> <button class="save danger" onclick="rabbitResetAll()">Reset Website Settings</button></div></section>
 
 <!-- ADVANCED -->
 
@@ -3512,32 +3398,6 @@ ${SITE.bodyStartHTML}`
     id="rabbit-master-control-js"
 >
 ${SITE.customJS}
-
-
-async function rabbitAPI(path, options={}){
- const response=await fetch('${CONFIG.adminPath}'+path,{credentials:'same-origin',...options});
- let data={}; try{data=await response.json();}catch(e){}
- if(!response.ok) throw new Error(data.error||'Request failed'); return data;
-}
-function rabbitEsc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
-function rabbitTable(id, headers, rows){const el=document.getElementById(id); if(!el)return; if(!rows.length){el.innerHTML='<p>No data.</p>';return;} el.innerHTML='<table><thead><tr>'+headers.map(h=>'<th>'+rabbitEsc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';}
-async function rabbitLoadUsers(){try{const d=await rabbitAPI('/api/master/users');rabbitTable('usersTable',['Socket','Address','Rooms','Name','Action'],d.users.map(u=>[rabbitEsc(u.id),rabbitEsc(u.address),rabbitEsc(u.rooms),rabbitEsc(u.name),'<button onclick="rabbitKick(\\''+encodeURIComponent(u.id)+'\\')">Disconnect</button>']));}catch(e){showToast(e.message)}}
-async function rabbitKick(id){try{await rabbitAPI('/api/master/users/'+decodeURIComponent(id)+'/kick',{method:'POST'});rabbitLoadUsers();}catch(e){showToast(e.message)}}
-async function rabbitLoadRooms(){try{const d=await rabbitAPI('/api/master/rooms');rabbitTable('roomsTable',['Room','Participants','Action'],d.rooms.map(r=>[rabbitEsc(r.roomId),rabbitEsc(r.count),'<button onclick="rabbitCloseRoom(\\''+encodeURIComponent(r.roomId)+'\\')">Close</button>']));rabbitTable('streamsTable',['Room','Live Peers'],d.rooms.map(r=>[rabbitEsc(r.roomId),rabbitEsc(r.count)]));}catch(e){showToast(e.message)}}
-async function rabbitCloseRoom(id){try{await rabbitAPI('/api/master/rooms/'+encodeURIComponent(decodeURIComponent(id))+'/close',{method:'POST'});rabbitLoadRooms();}catch(e){showToast(e.message)}}
-async function rabbitLoadChat(){try{const d=await rabbitAPI('/api/master/chat');rabbitTable('chatStats',['Status','Messages','Max Messages'],[[d.enabled?'Enabled':'Disabled',d.messages,d.maxMessages]]);}catch(e){showToast(e.message)}}
-async function rabbitClearChat(){if(!confirm('Clear global chat?'))return;try{await rabbitAPI('/api/master/chat/clear',{method:'POST'});rabbitLoadChat();showToast('Global chat cleared');}catch(e){showToast(e.message)}}
-async function rabbitLoadFiles(){try{const d=await rabbitAPI('/api/master/files');rabbitTable('filesTable',['Path','Size','Type','Action'],d.files.map(f=>[rabbitEsc(f.path),rabbitEsc(f.size),rabbitEsc(f.type),'<button onclick="rabbitOpen(\\''+encodeURIComponent(f.path)+'\\')">Open</button>']));}catch(e){showToast(e.message)}}
-async function rabbitOpen(p){const path=decodeURIComponent(p);document.getElementById('filePath').value=path;await rabbitReadFile()}
-async function rabbitReadFile(){try{const p=document.getElementById('filePath').value.trim();const d=await rabbitAPI('/api/master/file?path='+encodeURIComponent(p));document.getElementById('fileEditor').value=d.content;}catch(e){showToast(e.message)}}
-async function rabbitSaveFile(){try{const p=document.getElementById('filePath').value.trim();const c=document.getElementById('fileEditor').value;await rabbitAPI('/api/master/file',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p,content:c})});showToast('File saved');rabbitLoadFiles();}catch(e){showToast(e.message)}}
-async function rabbitDeleteFile(){try{const p=document.getElementById('filePath').value.trim();if(!confirm('Delete '+p+'?'))return;await rabbitAPI('/api/master/file?path='+encodeURIComponent(p),{method:'DELETE'});document.getElementById('fileEditor').value='';rabbitLoadFiles();showToast('File deleted');}catch(e){showToast(e.message)}}
-async function rabbitUploadFile(){try{const input=document.getElementById('fileUpload');if(!input.files[0])return;const file=input.files[0];if(file.size>10*1024*1024)throw new Error('Maximum upload size is 10 MB');const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file)});const target=prompt('Save as project path',file.name);if(!target)return;await rabbitAPI('/api/master/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:target,data})});rabbitLoadFiles();showToast('Uploaded');}catch(e){showToast(e.message)}}
-async function rabbitLoadRuntime(){try{const [o,s]=await Promise.all([rabbitAPI('/api/master/overview'),rabbitAPI('/api/master/security')]);rabbitTable('serverTable',['Property','Value'],Object.entries(o.server).map(([k,v])=>[rabbitEsc(k),rabbitEsc(v)]));rabbitTable('statsTable',['Metric','Value'],Object.entries(o.stats).map(([k,v])=>[rabbitEsc(k),rabbitEsc(v)]));rabbitTable('securityTable',['Property','Value'],Object.entries(s).map(([k,v])=>[rabbitEsc(k),rabbitEsc(v)]));rabbitLoadChat();}catch(e){showToast(e.message)}}
-async function rabbitBackup(){try{const d=await rabbitAPI('/api/master/backup');const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(d,null,2));a.download='rabbit-control-backup.json';a.click();}catch(e){showToast(e.message)}}
-async function rabbitResetAll(){if(!confirm('Reset all website settings?'))return;try{await rabbitAPI('/api/reset',{method:'POST'});location.reload();}catch(e){showToast(e.message)}}
-const oldNavHandler = null;
-$$('.nav button').forEach(b=>b.addEventListener('click',()=>{setTimeout(()=>{const p=b.dataset.page;if(p==='users')rabbitLoadUsers();if(p==='rooms'||p==='streams')rabbitLoadRooms();if(p==='chat')rabbitLoadChat();if(p==='files')rabbitLoadFiles();if(p==='server'||p==='statistics'||p==='security')rabbitLoadRuntime();},20)}));
 </script>
 `
             : '';
@@ -3740,124 +3600,6 @@ function middleware(
 
     }
 
-
-    /*
-    ========================================================
-    MASTER OVERVIEW
-    ========================================================
-    */
-
-    if (req.path === CONFIG.adminPath + '/api/master/overview' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try { return res.json(runtimeCall('getOverview')); }
-        catch (error) { return res.status(503).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/users' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try { return res.json({ users: runtimeCall('getUsers') }); }
-        catch (error) { return res.status(503).json({ error: error.message }); }
-    }
-
-    if (req.path.startsWith(CONFIG.adminPath + '/api/master/users/') && req.path.endsWith('/kick') && req.method === 'POST') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        const id = decodeURIComponent(req.path.slice((CONFIG.adminPath + '/api/master/users/').length, -5));
-        try { return res.json({ success: runtimeCall('kickUser', id) }); }
-        catch (error) { return res.status(503).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/rooms' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try { return res.json({ rooms: runtimeCall('getRooms') }); }
-        catch (error) { return res.status(503).json({ error: error.message }); }
-    }
-
-    if (req.path.startsWith(CONFIG.adminPath + '/api/master/rooms/') && req.path.endsWith('/close') && req.method === 'POST') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        const id = decodeURIComponent(req.path.slice((CONFIG.adminPath + '/api/master/rooms/').length, -6));
-        try { return res.json({ success: runtimeCall('closeRoom', id) }); }
-        catch (error) { return res.status(503).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/chat' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try { return res.json(runtimeCall('getChat')); }
-        catch (error) { return res.status(503).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/chat/clear' && req.method === 'POST') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try { return res.json({ success: runtimeCall('clearChat') }); }
-        catch (error) { return res.status(503).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/security' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        return res.json({ adminPath: CONFIG.adminPath, sessionDuration: '24 hours', loginProtection: true, credentialsSource: 'default admin/admin unless Render variables override them' });
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/backup' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        return res.json({ exportedAt: new Date().toISOString(), site: SITE, version: 1 });
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/files' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try { return res.json({ root: PROJECT_ROOT, files: listProjectFiles() }); }
-        catch (error) { return res.status(500).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/file' && req.method === 'GET') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try {
-            const full = safeProjectPath(req.query.path);
-            const st = fs.statSync(full);
-            if (!st.isFile()) throw new Error('Not a file.');
-            if (st.size > 2 * 1024 * 1024) throw new Error('Text editor limit is 2 MB.');
-            if (!fileReadableAsText(full)) throw new Error('Binary media cannot be opened in the text editor.');
-            return res.json({ path: displayProjectPath(full), content: fs.readFileSync(full, 'utf8') });
-        } catch (error) { return res.status(400).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/file' && req.method === 'PUT') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try {
-            const body = jsonBody(req);
-            const full = safeProjectPath(body.path);
-            if (!fileReadableAsText(full)) throw new Error('Binary files must be replaced by upload.');
-            const content = safeString(body.content, 5 * 1024 * 1024);
-            fs.writeFileSync(full, content, 'utf8');
-            return res.json({ success: true, path: displayProjectPath(full) });
-        } catch (error) { return res.status(400).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/file' && req.method === 'DELETE') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try {
-            const full = safeProjectPath(req.query.path);
-            if (full === __filename || full === process.mainModule?.filename) throw new Error('Critical server files cannot be deleted from the panel.');
-            const st = fs.statSync(full);
-            if (!st.isFile()) throw new Error('Only files can be deleted.');
-            fs.unlinkSync(full);
-            return res.json({ success: true });
-        } catch (error) { return res.status(400).json({ error: error.message }); }
-    }
-
-    if (req.path === CONFIG.adminPath + '/api/master/upload' && req.method === 'POST') {
-        if (!isAuthenticated(req)) return res.status(401).json({ error: 'Authentication required' });
-        try {
-            const body = jsonBody(req);
-            const full = safeProjectPath(body.path);
-            const data = safeString(body.data, 15 * 1024 * 1024);
-            const match = /^data:[^;]+;base64,(.+)$/s.exec(data);
-            if (!match) throw new Error('Invalid upload data.');
-            const buffer = Buffer.from(match[1], 'base64');
-            if (buffer.length > 10 * 1024 * 1024) throw new Error('Maximum upload size is 10 MB.');
-            fs.mkdirSync(path.dirname(full), { recursive: true });
-            fs.writeFileSync(full, buffer);
-            return res.json({ success: true, path: displayProjectPath(full), size: buffer.length });
-        } catch (error) { return res.status(400).json({ error: error.message }); }
-    }
 
     /*
     ========================================================
@@ -4238,8 +3980,6 @@ function interceptHTML(
  EXPORT
 ============================================================
 */
-
-middleware.setRuntime = setRuntime;
 
 module.exports =
     middleware;
