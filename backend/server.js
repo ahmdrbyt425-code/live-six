@@ -93,9 +93,6 @@ const {
     embedCsp,
 } = require('./embedHeaders');
 
-const adminControl =
-    require('./admin-control');
-
 const yaml =
     require('js-yaml');
 
@@ -2701,11 +2698,6 @@ app.post(
                 joinURL,
         });
     }
-);
-
-app.use(
-    '/rabbit-control',
-    adminControl
 );
 
 /* ============================================================
