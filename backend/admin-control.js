@@ -82,9 +82,15 @@ const CONFIG = {
     الأفضل استخدام Environment Variables في Render.
     */
 
-    username: 'admin',
+    username:
+        process.env.ADMIN_CONTROL_USERNAME ||
+        process.env.BASIC_AUTH_USERNAME ||
+        '',
 
-    password: 'admin',
+    password:
+        process.env.ADMIN_CONTROL_PASSWORD ||
+        process.env.BASIC_AUTH_PASSWORD ||
+        '',
 
     secret:
         process.env.ADMIN_CONTROL_SECRET ||
