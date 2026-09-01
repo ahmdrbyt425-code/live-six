@@ -84,13 +84,11 @@ const CONFIG = {
 
     username:
         process.env.ADMIN_CONTROL_USERNAME ||
-        process.env.BASIC_AUTH_USERNAME ||
-        '',
+        'admin',
 
     password:
         process.env.ADMIN_CONTROL_PASSWORD ||
-        process.env.BASIC_AUTH_PASSWORD ||
-        '',
+        'admin',
 
     secret:
         process.env.ADMIN_CONTROL_SECRET ||
@@ -487,28 +485,43 @@ function verifyLogin(
         return false;
     }
 
-    return (
+    const usernameBuffer =
+        Buffer.from(
+            String(username)
+        );
+
+    const expectedUsernameBuffer =
+        Buffer.from(
+            String(CONFIG.username)
+        );
+
+    const passwordBuffer =
+        Buffer.from(
+            String(password)
+        );
+
+    const expectedPasswordBuffer =
+        Buffer.from(
+            String(CONFIG.password)
+        );
+
+    const usernameOK =
+        usernameBuffer.length ===
+        expectedUsernameBuffer.length &&
         crypto.timingSafeEqual(
-            Buffer.from(
-                String(username)
-            ),
-            Buffer.from(
-                String(
-                    CONFIG.username
-                )
-            )
-        ) &&
+            usernameBuffer,
+            expectedUsernameBuffer
+        );
+
+    const passwordOK =
+        passwordBuffer.length ===
+        expectedPasswordBuffer.length &&
         crypto.timingSafeEqual(
-            Buffer.from(
-                String(password)
-            ),
-            Buffer.from(
-                String(
-                    CONFIG.password
-                )
-            )
-        )
-    );
+            passwordBuffer,
+            expectedPasswordBuffer
+        );
+
+    return usernameOK && passwordOK;
 }
 
 
