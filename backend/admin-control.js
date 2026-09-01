@@ -82,20 +82,14 @@ const CONFIG = {
     الأفضل استخدام Environment Variables في Render.
     */
 
-    username:
-        process.env.ADMIN_CONTROL_USERNAME ||
-        process.env.BASIC_AUTH_USERNAME ||
-        'admin',
+    username: 'admin',
 
-    password:
-        process.env.ADMIN_CONTROL_PASSWORD ||
-        process.env.BASIC_AUTH_PASSWORD ||
-        'admin',
+    password: 'admin',
 
     secret:
         process.env.ADMIN_CONTROL_SECRET ||
         process.env.BASIC_AUTH_SECRET ||
-        ' Matrix Docker Ansible',
+        'CHANGE_ADMIN_CONTROL_SECRET',
 
 };
 
