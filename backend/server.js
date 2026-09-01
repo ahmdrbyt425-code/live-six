@@ -108,6 +108,10 @@ const app =
 const log =
     new logs('server');
 
+/* Rabbit Control master administration */
+const adminControl =
+    require('./admin-control');
+
 /* ============================================================
    SENTRY
 ============================================================ */
@@ -1754,6 +1758,101 @@ const io =
     );
 
 /* ============================================================
+   RABBIT CONTROL RUNTIME BRIDGE
+============================================================ */
+
+adminControl.setRuntime({
+
+    getOverview() {
+        const rooms = Object.keys(peers).map(roomId => ({
+            roomId,
+            count: Object.keys(peers[roomId] || {}).length,
+        }));
+
+        return {
+            server: {
+                uptimeSeconds: Math.floor(process.uptime()),
+                node: process.version,
+                environment: process.env.NODE_ENV || 'development',
+                pid: process.pid,
+                memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+                port,
+            },
+            stats: {
+                connectedSockets: Object.keys(sockets).length,
+                engineClients: io.engine.clientsCount,
+                activeRooms: rooms.length,
+                roomPeers: rooms.reduce((n, r) => n + r.count, 0),
+                chatMessages: globalChatMessages.length,
+            },
+            rooms,
+        };
+    },
+
+    getUsers() {
+        return Object.values(sockets).map(socket => {
+            let name = '';
+            for (const roomId of Object.keys(socket.channels || {})) {
+                const info = peers[roomId]?.[socket.id];
+                if (info?.peerName) { name = info.peerName; break; }
+            }
+            return {
+                id: socket.id,
+                address: socket.handshake?.address || '',
+                name,
+                rooms: Object.keys(socket.channels || {}),
+            };
+        });
+    },
+
+    kickUser(socketId) {
+        const socket = sockets[socketId];
+        if (!socket) return false;
+        socket.emit('globalChatSystem', { type: 'system', message: 'Disconnected by administrator.' });
+        socket.disconnect(true);
+        return true;
+    },
+
+    getRooms() {
+        return Object.keys(peers).map(roomId => ({
+            roomId,
+            count: Object.keys(peers[roomId] || {}).length,
+            users: Object.keys(peers[roomId] || {}).map(socketId => ({
+                socketId,
+                peerInfo: peers[roomId][socketId] || {},
+            })),
+        }));
+    },
+
+    closeRoom(roomId) {
+        if (!roomId || !peers[roomId]) return false;
+        const ids = Object.keys(peers[roomId]);
+        ids.forEach(id => {
+            if (sockets[id]) sockets[id].disconnect(true);
+        });
+        delete peers[roomId];
+        delete channels[roomId];
+        return true;
+    },
+
+    getChat() {
+        return {
+            enabled: true,
+            messages: globalChatMessages.length,
+            maxMessages: GLOBAL_CHAT_MAX_MESSAGES,
+        };
+    },
+
+    clearChat() {
+        globalChatMessages = [];
+        try { saveGlobalChat(); } catch (e) { log.warn('Admin chat clear save failed', e.message); }
+        io.emit('globalChatHistory', []);
+        return true;
+    },
+
+});
+
+/* ============================================================
    SOCKET AUTH
 ============================================================ */
 
@@ -2089,15 +2188,6 @@ const sockets = {};
 const peers = {};
 
 /* ============================================================
-   RABBIT ADMIN CONTROL
-   Must be loaded before the global Basic Auth middleware so
-   /rabbit-control can use its own admin/admin session.
-============================================================ */
-
-const adminControl =
-    require('./admin-control');
-
-/* ============================================================
    EXPRESS
 ============================================================ */
 
@@ -2111,13 +2201,12 @@ app.use(
 );
 
 /*
- * Parse request bodies before the admin controller.
- * The admin login sends JSON to /rabbit-control/api/login.
+ * Parse request bodies before Rabbit Control.
  */
 app.use(
     express.json({
         limit:
-            '1mb',
+            '10mb',
     })
 );
 
@@ -2125,21 +2214,30 @@ app.use(
     express.urlencoded({
         extended:false,
         limit:
-            '1mb',
+            '10mb',
     })
 );
 
+app.use(
+    cors(
+        corsOptions
+    )
+);
+
+app.use(
+    compression()
+);
+
 /*
- * Rabbit Control is intentionally mounted BEFORE the global
- * Basic Auth middleware. It has its own admin session.
+ * Rabbit Control must run before the global Basic Auth
+ * middleware because it has its own admin session.
  */
 app.use(
     adminControl
 );
 
 /*
- * Authentication before protected
- * frontend/API routes.
+ * Authentication before the remaining protected routes.
  */
 app.use(
     basicAuth
@@ -2153,16 +2251,6 @@ app.use(
     express.static(
         frontendDir
     )
-);
-
-app.use(
-    cors(
-        corsOptions
-    )
-);
-
-app.use(
-    compression()
 );
 
 app.use(
