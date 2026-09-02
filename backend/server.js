@@ -1,91 +1,37 @@
 'use strict';
 
 /**
- * ============================================================
- * LOKI LIVE / MIROTALK C2C SERVER
- * ============================================================
+ * MiroTalk C2C - Server component
  *
- * يحتوي هذا الملف على:
+ * Loki Live Authentication
  *
- * 1. WebRTC rooms
- * 2. Socket.IO signaling
- * 3. Basic Authentication
- * 4. OIDC
- * 5. CORS
- * 6. Swagger API
- * 7. STUN / TURN
- * 8. Ngrok
- * 9. Mattermost
- * 10. Global Public Chat
- *
- * ============================================================
- *
- * GLOBAL PUBLIC CHAT
- *
- * الدردشة العامة ليست مرتبطة بالغرف.
- *
- * Events:
- *
- * client -> server:
- *
- *   globalChatSend
- *
- * server -> client:
- *
- *   globalChatHistory
- *   globalChatMessage
- *   globalChatSystem
- *
- * ============================================================
+ * BASIC_AUTH_ENABLED=true
+ * BASIC_AUTH_USERNAME=Loki
+ * BASIC_AUTH_PASSWORD=your_password
+ * BASIC_AUTH_SECRET=your_long_random_secret
+ * BASIC_AUTH_BLOCK_DURATION_MS=86400000
  */
 
 require('dotenv').config();
 
 const crypto = require('crypto');
+const { auth, requiresAuth } = require('express-openid-connect');
+const { Server } = require('socket.io');
+const httpolyglot = require('httpolyglot');
+const compression = require('compression');
+const express = require('express');
+const cors = require('cors');
+const checkXSS = require('./xss.js');
 const path = require('path');
+const ngrok = require('@ngrok/ngrok');
+const app = express();
+const helmet = require('helmet');
 const fs = require('fs');
-
-const {
-    auth,
-    requiresAuth,
-} = require('express-openid-connect');
-
-const {
-    Server,
-} = require('socket.io');
-
-const httpolyglot =
-    require('httpolyglot');
-
-const compression =
-    require('compression');
-
-const express =
-    require('express');
-
-const cors =
-    require('cors');
-
-const helmet =
-    require('helmet');
-
-const checkXSS =
-    require('./xss.js');
-
-const ngrok =
-    require('@ngrok/ngrok');
-
-const logs =
-    require('./logs');
-
-const ServerApi =
-    require('./api');
-
-const mattermostCli =
-    require('./mattermost');
-
-const sentry =
-    require('./sentry');
+const logs = require('./logs');
+const log = new logs('server');
+const ServerApi = require('./api');
+const mattermostCli = require('./mattermost');
+const sentry = require('./sentry');
 
 const {
     applyEmbedHeaders,
@@ -93,117 +39,62 @@ const {
     embedCsp,
 } = require('./embedHeaders');
 
-const yaml =
-    require('js-yaml');
+const yaml = require('js-yaml');
+const swaggerUi = require('swagger-ui-express');
 
-const swaggerUi =
-    require('swagger-ui-express');
+const swaggerDocument = yaml.load(
+    fs.readFileSync(
+        path.join(__dirname, '/api/swagger.yaml'),
+        'utf8'
+    )
+);
 
-const nodemailer =
-    require('./lib/nodemailer');
+const queryJoin = '/join?room=test&name=test';
+const queryRoom = '/?room=test';
 
-const app =
-    express();
-
-const log =
-    new logs('server');
-
-/* ============================================================
-   SENTRY
-============================================================ */
+const packageJson = require('../package.json');
+const nodemailer = require('./lib/nodemailer');
 
 sentry.start();
 
-/* ============================================================
-   SWAGGER
-============================================================ */
+// ============================================================
+// SSL
+// ============================================================
 
-const swaggerDocument =
-    yaml.load(
-        fs.readFileSync(
-            path.join(
-                __dirname,
-                '/api/swagger.yaml'
-            ),
-            'utf8'
-        )
-    );
+const keyPath = path.join(
+    __dirname,
+    'ssl/key.pem'
+);
 
-/* ============================================================
-   CONSTANTS
-============================================================ */
+const certPath = path.join(
+    __dirname,
+    'ssl/cert.pem'
+);
 
-const queryJoin =
-    '/join?room=test&name=test';
+const options = {
+    key: fs.readFileSync(
+        keyPath,
+        'utf-8'
+    ),
+    cert: fs.readFileSync(
+        certPath,
+        'utf-8'
+    ),
+};
 
-const queryRoom =
-    '/?room=test';
-
-const packageJson =
-    require('../package.json');
-
-/* ============================================================
-   SSL
-============================================================ */
-
-const keyPath =
-    path.join(
-        __dirname,
-        'ssl/key.pem'
-    );
-
-const certPath =
-    path.join(
-        __dirname,
-        'ssl/cert.pem'
-    );
-
-let sslOptions = null;
-
-try {
-    sslOptions = {
-        key:
-            fs.readFileSync(
-                keyPath,
-                'utf8'
-            ),
-
-        cert:
-            fs.readFileSync(
-                certPath,
-                'utf8'
-            ),
-    };
-} catch (error) {
-    log.warn(
-        'SSL certificate files could not be loaded.',
-        error.message
-    );
-
-    /*
-     * Render/proxies may terminate HTTPS
-     * before reaching Node.
-     */
-    sslOptions = null;
-}
-
-/* ============================================================
-   HTTP / HTTPS SERVER
-============================================================ */
+// ============================================================
+// HTTP / HTTPS SERVER
+// ============================================================
 
 const server =
-    sslOptions
-        ? httpolyglot.createServer(
-              sslOptions,
-              app
-          )
-        : require('http').createServer(
-              app
-          );
+    httpolyglot.createServer(
+        options,
+        app
+    );
 
-/* ============================================================
-   BASIC AUTH
-============================================================ */
+// ============================================================
+// BASIC AUTH / LOKI LIVE AUTHENTICATION
+// ============================================================
 
 const BASIC_AUTH_ENABLED =
     getEnvBoolean(
@@ -211,12 +102,10 @@ const BASIC_AUTH_ENABLED =
     );
 
 const BASIC_AUTH_USERNAME =
-    process.env.BASIC_AUTH_USERNAME ||
-    '';
+    process.env.BASIC_AUTH_USERNAME || '';
 
 const BASIC_AUTH_PASSWORD =
-    process.env.BASIC_AUTH_PASSWORD ||
-    '';
+    process.env.BASIC_AUTH_PASSWORD || '';
 
 const BASIC_AUTH_SECRET =
     process.env.BASIC_AUTH_SECRET ||
@@ -225,8 +114,7 @@ const BASIC_AUTH_SECRET =
 const BASIC_AUTH_COOKIE =
     'loki_live_auth';
 
-const MAX_LOGIN_ATTEMPTS =
-    10;
+const MAX_LOGIN_ATTEMPTS = 10;
 
 const BASIC_AUTH_BLOCK_DURATION_MS =
     Number(
@@ -240,8 +128,7 @@ const BASIC_AUTH_SESSION_MS =
         86400000
     );
 
-const loginSecurity =
-    new Map();
+const loginSecurity = new Map();
 
 if (
     BASIC_AUTH_ENABLED &&
@@ -267,384 +154,23 @@ if (
     );
 }
 
-/* ============================================================
-   GLOBAL PUBLIC CHAT
-   ============================================================ */
+// ============================================================
+// CLIENT IP
+// ============================================================
 
-/*
- * عدد الرسائل التي نحفظها.
- */
-const GLOBAL_CHAT_MAX_MESSAGES =
-    Math.max(
-        10,
-        Number(
-            process.env.GLOBAL_CHAT_MAX_MESSAGES ||
-            100
-        )
-    );
-
-/*
- * الحد الأقصى لطول الاسم.
- */
-const GLOBAL_CHAT_MAX_NAME_LENGTH =
-    Math.max(
-        3,
-        Math.min(
-            50,
-            Number(
-                process.env.GLOBAL_CHAT_MAX_NAME_LENGTH ||
-                36
-            )
-        )
-    );
-
-/*
- * الحد الأقصى لطول الرسالة.
- */
-const GLOBAL_CHAT_MAX_MESSAGE_LENGTH =
-    Math.max(
-        50,
-        Math.min(
-            2000,
-            Number(
-                process.env.GLOBAL_CHAT_MAX_MESSAGE_LENGTH ||
-                500
-            )
-        )
-    );
-
-/*
- * ملف حفظ الدردشة العامة.
- */
-const globalChatFile =
-    path.join(
-        __dirname,
-        'global-chat.json'
-    );
-
-/*
- * تخزين الرسائل في الذاكرة.
- */
-let globalChatMessages = [];
-
-/*
- * إنشاء ملف الدردشة إذا لم يكن موجوداً.
- */
-function ensureGlobalChatFile() {
-    try {
-        const dir =
-            path.dirname(
-                globalChatFile
-            );
-
-        if (
-            !fs.existsSync(dir)
-        ) {
-            fs.mkdirSync(
-                dir,
-                {
-                    recursive: true,
-                }
-            );
-        }
-
-        if (
-            !fs.existsSync(
-                globalChatFile
-            )
-        ) {
-            fs.writeFileSync(
-                globalChatFile,
-                '[]',
-                'utf8'
-            );
-        }
-    } catch (error) {
-        log.error(
-            'Unable to create global chat file',
-            error
-        );
-    }
-}
-
-/*
- * تحميل الرسائل القديمة.
- */
-function loadGlobalChat() {
-    ensureGlobalChatFile();
-
-    try {
-        const raw =
-            fs.readFileSync(
-                globalChatFile,
-                'utf8'
-            );
-
-        const parsed =
-            JSON.parse(raw);
-
-        if (
-            Array.isArray(parsed)
-        ) {
-            globalChatMessages =
-                parsed
-                    .filter(
-                        isValidChatMessage
-                    )
-                    .slice(
-                        -GLOBAL_CHAT_MAX_MESSAGES
-                    );
-        } else {
-            globalChatMessages = [];
-        }
-
-        log.info(
-            `Global chat loaded: ${globalChatMessages.length} messages`
-        );
-    } catch (error) {
-        globalChatMessages = [];
-
-        log.warn(
-            'Could not load global chat history',
-            error.message
-        );
-    }
-}
-
-/*
- * فحص رسالة محفوظة.
- */
-function isValidChatMessage(
-    message
-) {
-    if (
-        !message ||
-        typeof message !==
-            'object'
-    ) {
-        return false;
-    }
-
-    return (
-        typeof message.id ===
-            'string' &&
-        typeof message.name ===
-            'string' &&
-        typeof message.message ===
-            'string' &&
-        typeof message.timestamp ===
-            'number'
-    );
-}
-
-/*
- * حفظ الدردشة.
- */
-function saveGlobalChat() {
-    try {
-        ensureGlobalChatFile();
-
-        fs.writeFileSync(
-            globalChatFile,
-            JSON.stringify(
-                globalChatMessages,
-                null,
-                2
-            ),
-            'utf8'
-        );
-    } catch (error) {
-        log.error(
-            'Could not save global chat',
-            error
-        );
-    }
-}
-
-/*
- * تنظيف اسم المستخدم.
- */
-function sanitizeChatName(
-    value
-) {
-    let name =
-        typeof value ===
-            'string'
-            ? value
-            : '';
-
-    name =
-        name
-            .replace(
-                /\s+/g,
-                ' '
-            )
-            .trim();
-
-    name =
-        checkXSS(name);
-
-    if (
-        !name
-    ) {
-        name =
-            'زائر';
-    }
-
-    return name.substring(
-        0,
-        GLOBAL_CHAT_MAX_NAME_LENGTH
-    );
-}
-
-/*
- * تنظيف الرسالة.
- */
-function sanitizeChatMessage(
-    value
-) {
-    let message =
-        typeof value ===
-            'string'
-            ? value
-            : '';
-
-    /*
-     * إزالة null characters.
-     */
-    message =
-        message.replace(
-            /\0/g,
-            ''
-        );
-
-    /*
-     * توحيد الأسطر.
-     */
-    message =
-        message.replace(
-            /\r\n/g,
-            '\n'
-        );
-
-    message =
-        message.trim();
-
-    /*
-     * XSS filter.
-     */
-    message =
-        checkXSS(message);
-
-    /*
-     * منع HTML الناتج.
-     */
-    message =
-        message
-            .replace(
-                /<script[\s\S]*?>[\s\S]*?<\/script>/gi,
-                ''
-            );
-
-    return message.substring(
-        0,
-        GLOBAL_CHAT_MAX_MESSAGE_LENGTH
-    );
-}
-
-/*
- * إنشاء ID للرسالة.
- */
-function createChatMessageId() {
-    return (
-        Date.now().toString(36) +
-        '-' +
-        crypto
-            .randomBytes(8)
-            .toString('hex')
-    );
-}
-
-/*
- * إضافة رسالة للدردشة.
- */
-function addGlobalChatMessage(
-    name,
-    message
-) {
-    const chatMessage = {
-        id:
-            createChatMessageId(),
-
-        name:
-            sanitizeChatName(
-                name
-            ),
-
-        message:
-            sanitizeChatMessage(
-                message
-            ),
-
-        timestamp:
-            Date.now(),
-    };
-
-    if (
-        !chatMessage.message
-    ) {
-        return null;
-    }
-
-    globalChatMessages.push(
-        chatMessage
-    );
-
-    if (
-        globalChatMessages.length >
-        GLOBAL_CHAT_MAX_MESSAGES
-    ) {
-        globalChatMessages =
-            globalChatMessages.slice(
-                -GLOBAL_CHAT_MAX_MESSAGES
-            );
-    }
-
-    saveGlobalChat();
-
-    return chatMessage;
-}
-
-/*
- * تحميل الدردشة عند تشغيل السيرفر.
- */
-loadGlobalChat();
-
-/* ============================================================
-   CLIENT IP
-============================================================ */
-
-function getClientIp(
-    req
-) {
+function getClientIp(req) {
     const forwarded =
         req.headers[
             'x-forwarded-for'
         ];
 
-    if (
-        forwarded
-    ) {
+    if (forwarded) {
         const firstIp =
-            String(
-                forwarded
-            )
+            String(forwarded)
                 .split(',')[0]
                 .trim();
 
-        if (
-            firstIp
-        ) {
+        if (firstIp) {
             return firstIp;
         }
     }
@@ -656,53 +182,15 @@ function getClientIp(
     );
 }
 
-/* ============================================================
-   SOCKET CLIENT IP
-============================================================ */
+// ============================================================
+// SECURITY STORE
+// ============================================================
 
-function getSocketIp(
-    socket
-) {
-    const headers =
-        socket.handshake
-            ?.headers || {};
-
-    const forwarded =
-        headers[
-            'x-forwarded-for'
-        ];
-
-    if (
-        forwarded
-    ) {
-        return String(
-            forwarded
-        )
-            .split(',')[0]
-            .trim();
-    }
-
-    return (
-        socket.handshake?.address ||
-        'unknown'
-    );
-}
-
-/* ============================================================
-   SECURITY STORE
-============================================================ */
-
-function getSecurityRecord(
-    ip
-) {
+function getSecurityRecord(ip) {
     let record =
-        loginSecurity.get(
-            ip
-        );
+        loginSecurity.get(ip);
 
-    if (
-        !record
-    ) {
+    if (!record) {
         record = {
             attempts: 0,
             blockedUntil: 0,
@@ -717,17 +205,11 @@ function getSecurityRecord(
     return record;
 }
 
-function isIpBlocked(
-    ip
-) {
+function isIpBlocked(ip) {
     const record =
-        loginSecurity.get(
-            ip
-        );
+        loginSecurity.get(ip);
 
-    if (
-        !record
-    ) {
+    if (!record) {
         return false;
     }
 
@@ -744,23 +226,16 @@ function isIpBlocked(
         Date.now() >=
             record.blockedUntil
     ) {
-        loginSecurity.delete(
-            ip
-        );
-
+        loginSecurity.delete(ip);
         return false;
     }
 
     return false;
 }
 
-function registerFailedLogin(
-    ip
-) {
+function registerFailedLogin(ip) {
     const record =
-        getSecurityRecord(
-            ip
-        );
+        getSecurityRecord(ip);
 
     record.attempts += 1;
 
@@ -809,17 +284,13 @@ function registerFailedLogin(
     };
 }
 
-function resetLoginAttempts(
-    ip
-) {
-    loginSecurity.delete(
-        ip
-    );
+function resetLoginAttempts(ip) {
+    loginSecurity.delete(ip);
 }
 
-/* ============================================================
-   AUTH SIGNATURE
-============================================================ */
+// ============================================================
+// AUTH SIGNATURE
+// ============================================================
 
 function createAuthSignature(
     timestamp
@@ -835,9 +306,9 @@ function createAuthSignature(
         .digest('hex');
 }
 
-/* ============================================================
-   AUTH COOKIE
-============================================================ */
+// ============================================================
+// AUTH COOKIE
+// ============================================================
 
 function createAuthCookie() {
     const timestamp =
@@ -848,24 +319,19 @@ function createAuthCookie() {
             timestamp
         );
 
-    return (
-        `${timestamp}.${signature}`
-    );
+    return `${timestamp}.${signature}`;
 }
 
 function verifyAuthCookie(
     cookieValue
 ) {
-    if (
-        !cookieValue
-    ) {
+    if (!cookieValue) {
         return false;
     }
 
     const parts =
-        String(
-            cookieValue
-        ).split('.');
+        String(cookieValue)
+            .split('.');
 
     if (
         parts.length !== 2
@@ -874,9 +340,7 @@ function verifyAuthCookie(
     }
 
     const timestamp =
-        Number(
-            parts[0]
-        );
+        Number(parts[0]);
 
     const signature =
         parts[1];
@@ -895,8 +359,7 @@ function verifyAuthCookie(
         timestamp;
 
     if (
-        age >
-            BASIC_AUTH_SESSION_MS ||
+        age > BASIC_AUTH_SESSION_MS ||
         age < 0
     ) {
         return false;
@@ -934,9 +397,9 @@ function verifyAuthCookie(
     }
 }
 
-/* ============================================================
-   COOKIE READER
-============================================================ */
+// ============================================================
+// COOKIE READER
+// ============================================================
 
 function getCookie(
     req,
@@ -945,9 +408,7 @@ function getCookie(
     const cookieHeader =
         req.headers.cookie;
 
-    if (
-        !cookieHeader
-    ) {
+    if (!cookieHeader) {
         return null;
     }
 
@@ -982,8 +443,7 @@ function getCookie(
                 .trim();
 
         if (
-            name ===
-            cookieName
+            name === cookieName
         ) {
             try {
                 return decodeURIComponent(
@@ -998,9 +458,9 @@ function getCookie(
     return null;
 }
 
-/* ============================================================
-   PASSWORD COMPARISON
-============================================================ */
+// ============================================================
+// PASSWORD COMPARISON
+// ============================================================
 
 function safeStringEqual(
     a,
@@ -1036,6 +496,10 @@ function safeStringEqual(
     }
 }
 
+// ============================================================
+// LOGIN CREDENTIALS
+// ============================================================
+
 function checkLoginCredentials(
     username,
     password
@@ -1052,9 +516,9 @@ function checkLoginCredentials(
     );
 }
 
-/* ============================================================
-   HTTP AUTH CHECK
-============================================================ */
+// ============================================================
+// HTTP AUTH CHECK
+// ============================================================
 
 function isHttpAuthenticated(
     req
@@ -1076,9 +540,9 @@ function isHttpAuthenticated(
     );
 }
 
-/* ============================================================
-   AUTH COOKIE
-============================================================ */
+// ============================================================
+// SET AUTH COOKIE
+// ============================================================
 
 function setAuthCookie(
     res,
@@ -1108,6 +572,10 @@ function setAuthCookie(
     );
 }
 
+// ============================================================
+// CLEAR AUTH COOKIE
+// ============================================================
+
 function clearAuthCookie(
     res,
     req
@@ -1129,13 +597,11 @@ function clearAuthCookie(
     );
 }
 
-/* ============================================================
-   HTML ESCAPE
-============================================================ */
+// ============================================================
+// HTML ESCAPE
+// ============================================================
 
-function escapeHtml(
-    value
-) {
+function escapeHtml(value) {
     return String(value)
         .replace(
             /&/g,
@@ -1159,18 +625,16 @@ function escapeHtml(
         );
 }
 
-/* ============================================================
-   LOGIN PAGE
-============================================================ */
+// ============================================================
+// LOGIN PAGE
+// ============================================================
 
 function sendLoginPage(
     res,
     message = ''
 ) {
     const safeMessage =
-        escapeHtml(
-            message
-        );
+        escapeHtml(message);
 
     return res
         .status(200)
@@ -1182,116 +646,163 @@ function sendLoginPage(
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
 <title>Loki Live - Login</title>
+
 <style>
 * {
-    box-sizing:border-box;
+    box-sizing: border-box;
 }
 
 html,
 body {
-    margin:0;
-    padding:0;
-    min-height:100%;
-    font-family:Arial,Helvetica,sans-serif;
-    background:linear-gradient(
-        135deg,
-        #0d0f14,
-        #171a21
-    );
-    color:#fff;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+    background:
+        linear-gradient(
+            135deg,
+            #0d0f14,
+            #171a21
+        );
+    color: #fff;
 }
 
 body {
-    min-height:100vh;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:20px;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
 }
 
 .login-box {
-    width:100%;
-    max-width:400px;
-    padding:32px;
-    border-radius:20px;
-    background:#1a1d23;
-    border:1px solid rgba(255,255,255,.09);
-    box-shadow:0 25px 70px rgba(0,0,0,.5);
+    width: 100%;
+    max-width: 400px;
+    padding: 32px;
+    border-radius: 20px;
+    background: #1a1d23;
+    border: 1px solid
+        rgba(255,255,255,.09);
+    box-shadow:
+        0 25px 70px
+        rgba(0,0,0,.5);
 }
 
 .logo {
-    width:78px;
-    height:78px;
-    margin:0 auto 18px;
-    border-radius:50%;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:#fff;
-    color:#111318;
-    font-size:40px;
+    width: 78px;
+    height: 78px;
+    margin:
+        0 auto 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    color: #111318;
+    font-size: 40px;
+    box-shadow:
+        0 8px 30px
+        rgba(0,0,0,.25);
 }
 
 h1 {
-    text-align:center;
-    margin:0 0 8px;
-    font-size:28px;
+    text-align: center;
+    margin:
+        0 0 8px;
+    font-size: 28px;
+    font-weight: 700;
 }
 
 .subtitle {
-    text-align:center;
-    color:#9da3ad;
-    margin:0 0 26px;
-    font-size:14px;
+    text-align: center;
+    color: #9da3ad;
+    margin:
+        0 0 26px;
+    font-size: 14px;
 }
 
 .error {
-    background:rgba(220,38,38,.12);
-    border:1px solid rgba(220,38,38,.30);
-    color:#ff9696;
-    border-radius:10px;
-    padding:12px;
-    margin-bottom:18px;
-    font-size:14px;
-    text-align:center;
+    background:
+        rgba(220,38,38,.12);
+    border:
+        1px solid
+        rgba(220,38,38,.30);
+    color: #ff9696;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 18px;
+    font-size: 14px;
+    text-align: center;
 }
 
 label {
-    display:block;
-    margin:0 0 7px;
-    font-size:14px;
+    display: block;
+    margin:
+        0 0 7px;
+    font-size: 14px;
+    color: #d8dbe0;
 }
 
 input {
-    width:100%;
-    height:50px;
-    border:1px solid #343944;
-    border-radius:10px;
-    background:#101217;
-    color:#fff;
-    padding:0 14px;
-    outline:none;
-    margin-bottom:18px;
-    font-size:16px;
+    width: 100%;
+    height: 50px;
+    border:
+        1px solid #343944;
+    border-radius: 10px;
+    background: #101217;
+    color: #fff;
+    padding:
+        0 14px;
+    outline: none;
+    margin-bottom: 18px;
+    font-size: 16px;
+}
+
+input:focus {
+    border-color:
+        #8b929e;
+    box-shadow:
+        0 0 0 3px
+        rgba(255,255,255,.05);
 }
 
 button {
-    width:100%;
-    height:50px;
-    border:0;
-    border-radius:10px;
-    background:#fff;
-    color:#111318;
-    font-size:16px;
-    font-weight:700;
-    cursor:pointer;
+    width: 100%;
+    height: 50px;
+    border: 0;
+    border-radius: 10px;
+    background: #fff;
+    color: #111318;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+        opacity .2s,
+        transform .1s;
+}
+
+button:hover {
+    opacity: .92;
+}
+
+button:active {
+    transform: scale(.99);
+}
+
+button:disabled {
+    opacity: .55;
+    cursor: wait;
 }
 
 .footer {
-    text-align:center;
-    color:#686f7b;
-    margin-top:20px;
-    font-size:12px;
+    text-align: center;
+    color: #686f7b;
+    margin-top: 20px;
+    font-size: 12px;
 }
 </style>
 </head>
@@ -1300,71 +811,100 @@ button {
 
 <div class="login-box">
 
-<div class="logo">🥕</div>
+    <div class="logo">
+        🥕
+    </div>
 
-<h1>The rabbit in the hole</h1>
+    <h1>
+        The rabbit in the hole
+    </h1>
 
-<p class="subtitle">
-Sign in to continue
-</p>
+    <p class="subtitle">
+        Sign in to continue
+    </p>
 
-${
-    safeMessage
-        ? `<div class="error">${safeMessage}</div>`
-        : ''
-}
+    ${
+        safeMessage
+            ? `<div class="error">${safeMessage}</div>`
+            : ''
+    }
 
-<form
-    method="POST"
-    action="/auth/login"
-    autocomplete="on"
->
+    <form
+        id="loginForm"
+        method="POST"
+        action="/auth/login"
+        autocomplete="on"
+    >
 
-<label for="username">
-Username
-</label>
+        <label for="username">
+            Username
+        </label>
 
-<input
-    id="username"
-    name="username"
-    type="text"
-    autocomplete="username"
-    required
-    autofocus
->
+        <input
+            id="username"
+            name="username"
+            type="text"
+            autocomplete="username"
+            required
+            autofocus
+        >
 
-<label for="password">
-Password
-</label>
+        <label for="password">
+            Password
+        </label>
 
-<input
-    id="password"
-    name="password"
-    type="password"
-    autocomplete="current-password"
-    required
->
+        <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+        >
 
-<button type="submit">
-Login
-</button>
+        <button
+            id="loginButton"
+            type="submit"
+        >
+            Login
+        </button>
 
-</form>
+    </form>
 
-<div class="footer">
-https://live-six-hole.onrender.com
+    <div class="footer">
+        https://live-six-hole.onrender.com
+    </div>
+
 </div>
 
-</div>
+<script>
+const form =
+    document.getElementById(
+        'loginForm'
+    );
+
+const button =
+    document.getElementById(
+        'loginButton'
+    );
+
+form.addEventListener(
+    'submit',
+    function () {
+        button.disabled = true;
+        button.textContent =
+            'Checking...';
+    }
+);
+</script>
 
 </body>
 </html>`
         );
 }
 
-/* ============================================================
-   BLOCKED PAGE
-============================================================ */
+// ============================================================
+// ACCESS BLOCKED PAGE
+// ============================================================
 
 function sendBlockedPage(
     res
@@ -1380,26 +920,31 @@ function sendBlockedPage(
 <title>Loki Live - Access Blocked</title>
 <style>
 body {
-    margin:0;
-    min-height:100vh;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:#111318;
-    color:#fff;
-    font-family:Arial,sans-serif;
-    padding:20px;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #111318;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    padding: 20px;
 }
 .box {
-    max-width:430px;
-    text-align:center;
-    background:#1a1d23;
-    padding:36px;
-    border-radius:18px;
+    max-width: 430px;
+    text-align: center;
+    background: #1a1d23;
+    padding: 36px;
+    border-radius: 18px;
+    border: 1px solid
+        rgba(255,255,255,.08);
+}
+h1 {
+    margin-top: 0;
 }
 p {
-    color:#a8adb7;
-    line-height:1.6;
+    color: #a8adb7;
+    line-height: 1.6;
 }
 </style>
 </head>
@@ -1407,7 +952,7 @@ p {
 <div class="box">
 <h1>Access Blocked</h1>
 <p>
-Too many failed login attempts were detected.
+Too many failed login attempts were detected from this IP address.
 </p>
 <p>
 Please try again later.
@@ -1418,9 +963,9 @@ Please try again later.
         );
 }
 
-/* ============================================================
-   BASIC AUTH MIDDLEWARE
-============================================================ */
+// ============================================================
+// BASIC AUTH MIDDLEWARE
+// ============================================================
 
 function basicAuth(
     req,
@@ -1433,6 +978,9 @@ function basicAuth(
         return next();
     }
 
+    /*
+     * Public authentication routes.
+     */
     if (
         req.path === '/login' ||
         req.path === '/auth/login'
@@ -1440,6 +988,9 @@ function basicAuth(
         return next();
     }
 
+    /*
+     * Favicon is allowed.
+     */
     if (
         req.path === '/favicon.ico'
     ) {
@@ -1449,6 +1000,9 @@ function basicAuth(
     const ip =
         getClientIp(req);
 
+    /*
+     * Blocked IP.
+     */
     if (
         isIpBlocked(ip)
     ) {
@@ -1457,12 +1011,21 @@ function basicAuth(
         );
     }
 
+    /*
+     * Valid authentication cookie.
+     */
     if (
         isHttpAuthenticated(req)
     ) {
         return next();
     }
 
+    /*
+     * No WWW-Authenticate header.
+     *
+     * This intentionally prevents
+     * the browser's native Basic Auth popup.
+     */
     if (
         req.method === 'GET' ||
         req.method === 'HEAD'
@@ -1484,9 +1047,9 @@ function basicAuth(
         });
 }
 
-/* ============================================================
-   LOGIN ROUTES
-============================================================ */
+// ============================================================
+// LOGIN GET
+// ============================================================
 
 app.get(
     '/login',
@@ -1527,10 +1090,14 @@ app.get(
     }
 );
 
+// ============================================================
+// LOGIN POST
+// ============================================================
+
 app.post(
     '/auth/login',
     express.urlencoded({
-        extended:false,
+        extended: false,
     }),
     (
         req,
@@ -1601,6 +1168,16 @@ app.post(
                 ip
             );
 
+        log.warn(
+            'Failed Loki Live login',
+            {
+                ip,
+                username,
+                attempts:
+                    result.attempts,
+            }
+        );
+
         if (
             result.blocked
         ) {
@@ -1624,6 +1201,10 @@ app.post(
     }
 );
 
+// ============================================================
+// AUTH LOGOUT
+// ============================================================
+
 app.get(
     '/auth/logout',
     (
@@ -1641,9 +1222,9 @@ app.get(
     }
 );
 
-/* ============================================================
-   SERVER SETTINGS
-============================================================ */
+// ============================================================
+// SERVER SETTINGS
+// ============================================================
 
 const trustProxy =
     !!getEnvBoolean(
@@ -1670,9 +1251,9 @@ const apiDocs =
     apiBasePath +
     '/docs';
 
-/* ============================================================
-   CORS
-============================================================ */
+// ============================================================
+// CORS
+// ============================================================
 
 const cors_origin =
     process.env.CORS_ORIGIN;
@@ -1724,38 +1305,32 @@ if (
 const corsOptions = {
     origin:
         corsOrigin,
-
     methods:
         corsMethods,
-
-    credentials:
-        true,
 };
 
-/* ============================================================
-   SOCKET.IO
-============================================================ */
+// ============================================================
+// SOCKET.IO
+// ============================================================
 
 const io =
-    new Server(
-        server,
-        {
-            maxHttpBufferSize:
-                1e7,
+    new Server({
+        maxHttpBufferSize:
+            1e7,
 
-            transports: [
-                'websocket',
-                'polling',
-            ],
+        transports: [
+            'websocket',
+        ],
 
-            cors:
-                corsOptions,
-        }
+        cors:
+            corsOptions,
+    }).listen(
+        server
     );
 
-/* ============================================================
-   SOCKET AUTH
-============================================================ */
+// ============================================================
+// SOCKET.IO AUTHENTICATION
+// ============================================================
 
 io.use(
     (
@@ -1770,7 +1345,7 @@ io.use(
 
         const headers =
             socket.handshake
-                ?.headers || {};
+                .headers || {};
 
         const cookieHeader =
             headers.cookie || '';
@@ -1779,13 +1354,17 @@ io.use(
             null;
 
         const cookies =
-            cookieHeader.split(';');
+            cookieHeader.split(
+                ';'
+            );
 
         for (
             const cookie of cookies
         ) {
             const separator =
-                cookie.indexOf('=');
+                cookie.indexOf(
+                    '='
+                );
 
             if (
                 separator === -1
@@ -1834,6 +1413,15 @@ io.use(
             return next();
         }
 
+        log.warn(
+            'Socket.IO authentication failed',
+            {
+                ip:
+                    socket.handshake
+                        .address,
+            }
+        );
+
         return next(
             new Error(
                 'Authentication required'
@@ -1842,9 +1430,9 @@ io.use(
     }
 );
 
-/* ============================================================
-   NGROK
-============================================================ */
+// ============================================================
+// NGROK
+// ============================================================
 
 const ngrokEnabled =
     getEnvBoolean(
@@ -1854,9 +1442,9 @@ const ngrokEnabled =
 const ngrokAuthToken =
     process.env.NGROK_AUTH_TOKEN;
 
-/* ============================================================
-   ICE SERVERS
-============================================================ */
+// ============================================================
+// ICE SERVERS
+// ============================================================
 
 const iceServers = [];
 
@@ -1910,27 +1498,32 @@ if (
     });
 }
 
-/* ============================================================
-   MATTERMOST
-============================================================ */
+// ============================================================
+// MATTERMOST
+// ============================================================
 
 const mattermostCfg = {
     enabled:
         getEnvBoolean(
-            process.env.MATTERMOST_ENABLED
+            process.env
+                .MATTERMOST_ENABLED
         ),
 
     server_url:
-        process.env.MATTERMOST_SERVER_URL,
+        process.env
+            .MATTERMOST_SERVER_URL,
 
     username:
-        process.env.MATTERMOST_USERNAME,
+        process.env
+            .MATTERMOST_USERNAME,
 
     password:
-        process.env.MATTERMOST_PASSWORD,
+        process.env
+            .MATTERMOST_PASSWORD,
 
     token:
-        process.env.MATTERMOST_TOKEN,
+        process.env
+            .MATTERMOST_TOKEN,
 };
 
 const surveyURL =
@@ -1941,31 +1534,36 @@ const redirectURL =
     process.env.REDIRECT_URL ||
     false;
 
-/* ============================================================
-   OIDC
-============================================================ */
+// ============================================================
+// OIDC
+// ============================================================
 
 const OIDC = {
     enabled:
         process.env.OIDC_ENABLED
             ? getEnvBoolean(
-                  process.env.OIDC_ENABLED
+                  process.env
+                      .OIDC_ENABLED
               )
             : false,
 
     baseUrlDynamic:
-        process.env.OIDC_BASE_URL_DYNAMIC
+        process.env
+            .OIDC_BASE_URL_DYNAMIC
             ? getEnvBoolean(
-                  process.env.OIDC_BASE_URL_DYNAMIC
+                  process.env
+                      .OIDC_BASE_URL_DYNAMIC
               )
             : false,
 
     allowedDynamicBaseURLs:
-        process.env.OIDC_ALLOWED_DYNAMIC_BASE_URLS
-            ? process.env.OIDC_ALLOWED_DYNAMIC_BASE_URLS
+        process.env
+            .OIDC_ALLOWED_DYNAMIC_BASE_URLS
+            ? process.env
+                  .OIDC_ALLOWED_DYNAMIC_BASE_URLS
                   .split(',')
                   .map(
-                      u =>
+                      (u) =>
                           u.trim()
                   )
                   .filter(Boolean)
@@ -1973,19 +1571,24 @@ const OIDC = {
 
     config: {
         issuerBaseURL:
-            process.env.OIDC_ISSUER_BASE_URL,
+            process.env
+                .OIDC_ISSUER_BASE_URL,
 
         clientID:
-            process.env.OIDC_CLIENT_ID,
+            process.env
+                .OIDC_CLIENT_ID,
 
         clientSecret:
-            process.env.OIDC_CLIENT_SECRET,
+            process.env
+                .OIDC_CLIENT_SECRET,
 
         baseURL:
-            process.env.OIDC_BASE_URL,
+            process.env
+                .OIDC_BASE_URL,
 
         secret:
-            process.env.SESSION_SECRET,
+            process.env
+                .SESSION_SECRET,
 
         authorizationParams: {
             response_type:
@@ -1996,16 +1599,20 @@ const OIDC = {
         },
 
         authRequired:
-            process.env.OIDC_AUTH_REQUIRED
+            process.env
+                .OIDC_AUTH_REQUIRED
                 ? getEnvBoolean(
-                      process.env.OIDC_AUTH_REQUIRED
+                      process.env
+                          .OIDC_AUTH_REQUIRED
                   )
                 : false,
 
         auth0Logout:
-            process.env.OIDC_AUTH_LOGOUT
+            process.env
+                .OIDC_AUTH_LOGOUT
                 ? getEnvBoolean(
-                      process.env.OIDC_AUTH_LOGOUT
+                      process.env
+                          .OIDC_AUTH_LOGOUT
                   )
                 : true,
 
@@ -2035,6 +1642,10 @@ const OIDCAuth =
                 req.oidc &&
                 req.oidc.isAuthenticated()
             ) {
+                log.debug(
+                    'OIDC ------> User already Authenticated'
+                );
+
                 return next();
             }
 
@@ -2048,9 +1659,9 @@ const OIDCAuth =
         return next();
     };
 
-/* ============================================================
-   FRONTEND
-============================================================ */
+// ============================================================
+// FRONTEND
+// ============================================================
 
 const frontendDir =
     path.join(
@@ -2080,26 +1691,17 @@ const htmlPrivacy =
         'frontend/html/privacy.html'
     );
 
-/* ============================================================
-   ROOM STORAGE
-============================================================ */
+// ============================================================
+// ROOM STORAGE
+// ============================================================
 
 const channels = {};
 const sockets = {};
 const peers = {};
 
-/* ============================================================
-   RABBIT ADMIN CONTROL
-   Must be loaded before the global Basic Auth middleware so
-   /rabbit-control can use its own admin/admin session.
-============================================================ */
-
-const adminControl =
-    require('./admin-control');
-
-/* ============================================================
-   EXPRESS
-============================================================ */
+// ============================================================
+// EXPRESS SETTINGS
+// ============================================================
 
 app.set(
     'trust proxy',
@@ -2111,35 +1713,9 @@ app.use(
 );
 
 /*
- * Parse request bodies before the admin controller.
- * The admin login sends JSON to /rabbit-control/api/login.
- */
-app.use(
-    express.json({
-        limit:
-            '1mb',
-    })
-);
-
-app.use(
-    express.urlencoded({
-        extended:false,
-        limit:
-            '1mb',
-    })
-);
-
-/*
- * Rabbit Control is intentionally mounted BEFORE the global
- * Basic Auth middleware. It has its own admin session.
- */
-app.use(
-    adminControl
-);
-
-/*
- * Authentication before protected
- * frontend/API routes.
+ * IMPORTANT:
+ * Authentication comes before
+ * frontend/API/Swagger.
  */
 app.use(
     basicAuth
@@ -2166,6 +1742,16 @@ app.use(
 );
 
 app.use(
+    express.json()
+);
+
+app.use(
+    express.urlencoded({
+        extended: false,
+    })
+);
+
+app.use(
     apiBasePath +
         '/docs',
     swaggerUi.serve,
@@ -2174,9 +1760,9 @@ app.use(
     )
 );
 
-/* ============================================================
-   REQUEST LOGGING
-============================================================ */
+// ============================================================
+// REQUEST LOGGING
+// ============================================================
 
 app.use(
     (
@@ -2187,6 +1773,9 @@ app.use(
         log.debug(
             'New request:',
             {
+                body:
+                    req.body,
+
                 method:
                     req.method,
 
@@ -2199,9 +1788,9 @@ app.use(
     }
 );
 
-/* ============================================================
-   MATTERMOST
-============================================================ */
+// ============================================================
+// MATTERMOST
+// ============================================================
 
 const mattermost =
     new mattermostCli(
@@ -2209,9 +1798,9 @@ const mattermost =
         mattermostCfg
     );
 
-/* ============================================================
-   ERROR HANDLER
-============================================================ */
+// ============================================================
+// ERROR HANDLER
+// ============================================================
 
 app.use(
     (
@@ -2229,6 +1818,12 @@ app.use(
             log.error(
                 'Request Error',
                 {
+                    header:
+                        req.headers,
+
+                    body:
+                        req.body,
+
                     error:
                         err.message,
                 }
@@ -2269,9 +1864,9 @@ app.use(
     }
 );
 
-/* ============================================================
-   OIDC
-============================================================ */
+// ============================================================
+// OIDC
+// ============================================================
 
 if (
     OIDC.enabled
@@ -2291,7 +1886,7 @@ if (
             ]
                 .filter(Boolean)
                 .map(
-                    u => {
+                    (u) => {
                         try {
                             return new URL(
                                 u
@@ -2320,6 +1915,13 @@ if (
                         'static'
                     )
                 ) {
+                    log.debug(
+                        'OIDC baseURL',
+                        OIDC
+                            .config
+                            .baseURL
+                    );
+
                     authMiddlewareCache.set(
                         'static',
                         auth(
@@ -2346,6 +1948,11 @@ if (
                     baseURL:
                         key,
                 };
+
+                log.debug(
+                    'OIDC baseURL',
+                    config.baseURL
+                );
 
                 authMiddlewareCache.set(
                     key,
@@ -2382,6 +1989,21 @@ if (
                     cacheKey
                 )
             ) {
+                log.warn(
+                    'OIDC Host header not in allowlist - rejecting request',
+                    {
+                        host:
+                            incomingHost,
+
+                        origin:
+                            cacheKey,
+
+                        allowed: [
+                            ...allowedOrigins,
+                        ],
+                    }
+                );
+
                 return res
                     .status(400)
                     .send(
@@ -2398,10 +2020,12 @@ if (
                     res,
                     next
                 );
-            } catch (error) {
+            } catch (
+                err
+            ) {
                 log.error(
                     'OIDC Auth Middleware Error',
-                    error
+                    err
                 );
 
                 process.exit(1);
@@ -2410,9 +2034,9 @@ if (
     );
 }
 
-/* ============================================================
-   PROFILE
-============================================================ */
+// ============================================================
+// PROFILE
+// ============================================================
 
 app.get(
     '/profile',
@@ -2424,6 +2048,11 @@ app.get(
         if (
             OIDC.enabled
         ) {
+            log.debug(
+                'OIDC User profile requested',
+                req.oidc.user
+            );
+
             return res.json(
                 req.oidc.user
             );
@@ -2436,9 +2065,9 @@ app.get(
     }
 );
 
-/* ============================================================
-   OIDC CALLBACK
-============================================================ */
+// ============================================================
+// OIDC CALLBACK
+// ============================================================
 
 app.get(
     '/auth/callback',
@@ -2451,9 +2080,9 @@ app.get(
     }
 );
 
-/* ============================================================
-   LOGOUT
-============================================================ */
+// ============================================================
+// LOGOUT
+// ============================================================
 
 app.get(
     '/logout',
@@ -2479,9 +2108,9 @@ app.get(
     }
 );
 
-/* ============================================================
-   HOME OIDC AUTH
-============================================================ */
+// ============================================================
+// HOME OIDC AUTH
+// ============================================================
 
 const HomeOIDCAuth =
     (
@@ -2491,7 +2120,8 @@ const HomeOIDCAuth =
     ) => {
         if (
             OIDC.enabled &&
-            !OIDC.config.authRequired &&
+            !OIDC.config
+                .authRequired &&
             req.oidc &&
             !req.oidc.isAuthenticated()
         ) {
@@ -2509,6 +2139,13 @@ const HomeOIDCAuth =
                 room &&
                 room in peers
             ) {
+                log.debug(
+                    'OIDC ------> Guest allowed on home for existing room',
+                    {
+                        room,
+                    }
+                );
+
                 return next();
             }
         }
@@ -2520,9 +2157,9 @@ const HomeOIDCAuth =
         );
     };
 
-/* ============================================================
-   HOME
-============================================================ */
+// ============================================================
+// HOME
+// ============================================================
 
 app.get(
     '/',
@@ -2537,9 +2174,9 @@ app.get(
     }
 );
 
-/* ============================================================
-   PRIVACY
-============================================================ */
+// ============================================================
+// PRIVACY
+// ============================================================
 
 app.get(
     '/privacy',
@@ -2553,9 +2190,9 @@ app.get(
     }
 );
 
-/* ============================================================
-   JOIN
-============================================================ */
+// ============================================================
+// JOIN
+// ============================================================
 
 app.get(
     '/join/',
@@ -2574,13 +2211,20 @@ app.get(
             );
         }
 
+        log.debug(
+            '[' +
+                req.headers.host +
+                ']' +
+                ' request query',
+            req.query
+        );
+
         const {
             room,
             name,
-        } =
-            checkXSS(
-                req.query
-            );
+        } = checkXSS(
+            req.query
+        );
 
         if (
             !room ||
@@ -2593,7 +2237,8 @@ app.get(
 
         if (
             OIDC.enabled &&
-            OIDC.config.authRequired &&
+            OIDC.config
+                .authRequired &&
             (
                 !req.oidc ||
                 !req.oidc.isAuthenticated()
@@ -2628,12 +2273,20 @@ app.get(
         return res.sendFile(
             htmlClient
         );
+    },
+    (
+        req,
+        res
+    ) => {
+        return res.sendFile(
+            htmlClient
+        );
     }
 );
 
-/* ============================================================
-   API MEETING
-============================================================ */
+// ============================================================
+// API - MEETING
+// ============================================================
 
 app.post(
     `${apiBasePath}/meeting`,
@@ -2644,8 +2297,7 @@ app.post(
         const {
             host,
             authorization,
-        } =
-            req.headers;
+        } = req.headers;
 
         const api =
             new ServerApi(
@@ -2657,6 +2309,17 @@ app.post(
         if (
             !api.isAuthorized()
         ) {
+            log.debug(
+                'MiroTalk get meeting - Unauthorized',
+                {
+                    header:
+                        req.headers,
+
+                    body:
+                        req.body,
+                }
+            );
+
             return res
                 .status(403)
                 .json({
@@ -2668,16 +2331,30 @@ app.post(
         const meetingURL =
             api.getMeetingURL();
 
-        return res.json({
+        res.json({
             meeting:
                 meetingURL,
         });
+
+        log.debug(
+            'MiroTalk get meeting - Authorized',
+            {
+                header:
+                    req.headers,
+
+                body:
+                    req.body,
+
+                meeting:
+                    meetingURL,
+            }
+        );
     }
 );
 
-/* ============================================================
-   API JOIN
-============================================================ */
+// ============================================================
+// API - JOIN
+// ============================================================
 
 app.post(
     `${apiBasePath}/join`,
@@ -2688,8 +2365,7 @@ app.post(
         const {
             host,
             authorization,
-        } =
-            req.headers;
+        } = req.headers;
 
         const api =
             new ServerApi(
@@ -2701,6 +2377,17 @@ app.post(
         if (
             !api.isAuthorized()
         ) {
+            log.debug(
+                'MiroTalk get join - Unauthorized',
+                {
+                    header:
+                        req.headers,
+
+                    body:
+                        req.body,
+                }
+            );
+
             return res
                 .status(403)
                 .json({
@@ -2714,16 +2401,30 @@ app.post(
                 req.body
             );
 
-        return res.json({
+        res.json({
             join:
                 joinURL,
         });
+
+        log.debug(
+            'MiroTalk get join - Authorized',
+            {
+                header:
+                    req.headers,
+
+                body:
+                    req.body,
+
+                join:
+                    joinURL,
+            }
+        );
     }
 );
 
-/* ============================================================
-   404
-============================================================ */
+// ============================================================
+// 404
+// ============================================================
 
 app.use(
     (
@@ -2747,9 +2448,9 @@ function notFound(
         });
 }
 
-/* ============================================================
-   ENV BOOLEAN
-============================================================ */
+// ============================================================
+// ENV BOOLEAN
+// ============================================================
 
 function getEnvBoolean(
     key,
@@ -2765,9 +2466,9 @@ function getEnvBoolean(
     return key === 'true';
 }
 
-/* ============================================================
-   SERVER CONFIG
-============================================================ */
+// ============================================================
+// SERVER CONFIG
+// ============================================================
 
 function getServerConfig(
     tunnelHttps = false
@@ -2834,7 +2535,7 @@ function getServerConfig(
             csp:
                 embedCsp
                     ? embedCsp.csp
-                    : 'not set',
+                    : 'not set (embedding allowed from any origin)',
         },
 
         apiDocs:
@@ -2852,20 +2553,6 @@ function getServerConfig(
 
             sessionDuration:
                 BASIC_AUTH_SESSION_MS,
-        },
-
-        globalChat: {
-            enabled:
-                true,
-
-            maxMessages:
-                GLOBAL_CHAT_MAX_MESSAGES,
-
-            maxNameLength:
-                GLOBAL_CHAT_MAX_NAME_LENGTH,
-
-            maxMessageLength:
-                GLOBAL_CHAT_MAX_MESSAGE_LENGTH,
         },
 
         apiKeySecret:
@@ -2891,9 +2578,9 @@ function getServerConfig(
     };
 }
 
-/* ============================================================
-   NGROK
-============================================================ */
+// ============================================================
+// NGROK
+// ============================================================
 
 async function ngrokStart() {
     try {
@@ -2903,8 +2590,7 @@ async function ngrokStart() {
 
         const listener =
             await ngrok.forward({
-                addr:
-                    port,
+                addr: port,
             });
 
         const tunnelUrl =
@@ -2916,10 +2602,12 @@ async function ngrokStart() {
                 tunnelUrl
             )
         );
-    } catch (error) {
+    } catch (
+        err
+    ) {
         log.warn(
             'Ngrok Start error',
-            error
+            err
         );
 
         try {
@@ -2937,9 +2625,9 @@ async function ngrokStart() {
     }
 }
 
-/* ============================================================
-   SERVER START
-============================================================ */
+// ============================================================
+// SERVER START
+// ============================================================
 
 server.listen(
     port,
@@ -2960,16 +2648,12 @@ server.listen(
         log.info(
             `Loki Live server started on port ${port}`
         );
-
-        log.info(
-            'GLOBAL PUBLIC CHAT ENABLED'
-        );
     }
 );
 
-/* ============================================================
-   CLIENT ERROR
-============================================================ */
+// ============================================================
+// CLIENT ERROR
+// ============================================================
 
 server.on(
     'clientError',
@@ -2977,16 +2661,34 @@ server.on(
         err,
         socket
     ) => {
-        log.warn(
-            'Client connection error',
-            {
-                error:
-                    err.message,
+        if (
+            err.code ===
+                'HPE_HEADER_OVERFLOW' ||
+            err.message ===
+                'Parse Error'
+        ) {
+            log.warn(
+                'Client HTTP parse error',
+                {
+                    error:
+                        err.message,
 
-                code:
-                    err.code,
-            }
-        );
+                    code:
+                        err.code,
+                }
+            );
+        } else {
+            log.warn(
+                'Client connection error',
+                {
+                    error:
+                        err.message,
+
+                    code:
+                        err.code,
+                }
+            );
+        }
 
         if (
             socket &&
@@ -2999,13 +2701,15 @@ server.on(
     }
 );
 
-/* ============================================================
-   SOCKET.IO ERROR
-============================================================ */
+// ============================================================
+// SOCKET.IO ERROR
+// ============================================================
 
 io.on(
     'error',
-    error => {
+    (
+        error
+    ) => {
         log.error(
             'Socket.IO error:',
             error
@@ -3013,16 +2717,19 @@ io.on(
     }
 );
 
-/* ============================================================
-   SOCKET.IO CONNECTION
-============================================================ */
+// ============================================================
+// SOCKET.IO CONNECTION
+// ============================================================
 
-io.on(
-    'connection',
-    socket => {
-
+io.sockets.on(
+    'connect',
+    (
+        socket
+    ) => {
         log.debug(
-            `[${socket.id}] connection accepted`
+            '[' +
+                socket.id +
+                '] connection accepted'
         );
 
         socket.channels = {};
@@ -3031,211 +2738,26 @@ io.on(
             socket.id
         ] = socket;
 
-        /* ====================================================
-           GLOBAL PUBLIC CHAT
-        ==================================================== */
-
-        /*
-         * عند دخول أي مستخدم للموقع،
-         * أرسل له سجل الدردشة العامة.
-         */
-        socket.emit(
-            'globalChatHistory',
-            globalChatMessages
-        );
-
-        /*
-         * إرسال معلومات عدد المتصلين بالدردشة.
-         */
-        io.emit(
-            'globalChatOnline',
-            io.engine.clientsCount
-        );
-
-        /*
-         * استقبال رسالة الدردشة العامة.
-         *
-         * لا نتحقق من room هنا.
-         *
-         * لذلك الدردشة مستقلة تماماً
-         * عن غرف الفيديو.
-         */
-        socket.on(
-            'globalChatSend',
-            data => {
-
-                try {
-
-                    if (
-                        !data ||
-                        typeof data !==
-                            'object'
-                    ) {
-                        return;
-                    }
-
-                    /*
-                     * يمكن للواجهة إرسال:
-                     *
-                     * {
-                     *   name: "Ahmed",
-                     *   message: "مرحبا"
-                     * }
-                     */
-                    const name =
-                        sanitizeChatName(
-                            data.name
-                        );
-
-                    const message =
-                        sanitizeChatMessage(
-                            data.message
-                        );
-
-                    if (
-                        !message
-                    ) {
-                        return socket.emit(
-                            'globalChatSystem',
-                            {
-                                type:
-                                    'error',
-
-                                message:
-                                    'الرسالة فارغة.',
-                            }
-                        );
-                    }
-
-                    /*
-                     * منع الرسائل الطويلة.
-                     */
-                    if (
-                        String(
-                            data.message ||
-                                ''
-                        ).length >
-                        GLOBAL_CHAT_MAX_MESSAGE_LENGTH
-                    ) {
-                        return socket.emit(
-                            'globalChatSystem',
-                            {
-                                type:
-                                    'error',
-
-                                message:
-                                    `الحد الأقصى للرسالة ${GLOBAL_CHAT_MAX_MESSAGE_LENGTH} حرف.`,
-                            }
-                        );
-                    }
-
-                    const chatMessage =
-                        addGlobalChatMessage(
-                            name,
-                            message
-                        );
-
-                    if (
-                        !chatMessage
-                    ) {
-                        return;
-                    }
-
-                    /*
-                     * إرسال الرسالة للجميع.
-                     *
-                     * هذا هو الجزء الذي يجعل
-                     * الدردشة عامة خارج الغرفة.
-                     */
-                    io.emit(
-                        'globalChatMessage',
-                        chatMessage
-                    );
-
-                    /*
-                     * تحديث عدد المتصلين.
-                     */
-                    io.emit(
-                        'globalChatOnline',
-                        io.engine.clientsCount
-                    );
-
-                    log.info(
-                        '[GLOBAL CHAT]',
-                        {
-                            socketId:
-                                socket.id,
-
-                            name:
-                                chatMessage.name,
-
-                            messageLength:
-                                chatMessage.message.length,
-                        }
-                    );
-
-                } catch (error) {
-
-                    log.error(
-                        'Global chat message error',
-                        error
-                    );
-
-                    socket.emit(
-                        'globalChatSystem',
-                        {
-                            type:
-                                'error',
-
-                            message:
-                                'حدث خطأ أثناء إرسال الرسالة.',
-                        }
-                    );
-                }
-            }
-        );
-
-        /*
-         * إشعار الكتابة.
-         *
-         * لا نحفظه في الملف.
-         */
-        socket.on(
-            'globalChatTyping',
-            data => {
-
-                const name =
-                    sanitizeChatName(
-                        data?.name
-                    );
-
-                socket.broadcast.emit(
-                    'globalChatTyping',
-                    {
-                        name:
-                            name,
-
-                        typing:
-                            Boolean(
-                                data?.typing
-                            ),
-                    }
-                );
-            }
-        );
-
-        /* ====================================================
-           VIDEO JOIN
-        ==================================================== */
+        // ====================================================
+        // JOIN
+        // ====================================================
 
         socket.on(
             'join',
-            cfg => {
-
+            (
+                cfg
+            ) => {
                 const config =
                     checkXSS(
                         cfg
                     );
+
+                log.debug(
+                    '[' +
+                        socket.id +
+                        '] join ',
+                    config
+                );
 
                 const channel =
                     config.channel;
@@ -3244,7 +2766,9 @@ io.on(
                     !channel
                 ) {
                     return log.warn(
-                        `[${socket.id}] join rejected: missing channel`
+                        '[' +
+                            socket.id +
+                            '] join rejected: missing channel'
                     );
                 }
 
@@ -3252,7 +2776,12 @@ io.on(
                     channel in
                     socket.channels
                 ) {
-                    return;
+                    return log.debug(
+                        '[' +
+                            socket.id +
+                            '] [Warning] already joined',
+                        channel
+                    );
                 }
 
                 if (
@@ -3283,6 +2812,19 @@ io.on(
                     socket.id
                 ] =
                     config.peerInfo;
+
+                const activeRooms =
+                    getActiveRooms();
+
+                log.info(
+                    '[Join] - active rooms and peers count',
+                    activeRooms
+                );
+
+                log.debug(
+                    '[Join] - connected peers grp by roomId',
+                    peers
+                );
 
                 addPeerTo(
                     channel
@@ -3372,9 +2914,9 @@ io.on(
             }
         );
 
-        /* ====================================================
-           SHARED ROOM
-        ==================================================== */
+        // ====================================================
+        // SHARED ROOM
+        // ====================================================
 
         function peersShareRoom(
             peerId
@@ -3408,14 +2950,15 @@ io.on(
             return false;
         }
 
-        /* ====================================================
-           RELAY SDP
-        ==================================================== */
+        // ====================================================
+        // RELAY SDP
+        // ====================================================
 
         socket.on(
             'relaySDP',
-            config => {
-
+            (
+                config
+            ) => {
                 if (
                     !config
                 ) {
@@ -3433,7 +2976,13 @@ io.on(
                         peerId
                     )
                 ) {
-                    return;
+                    return log.warn(
+                        '[' +
+                            socket.id +
+                            '] relaySDP blocked: no shared room with [' +
+                            peerId +
+                            ']'
+                    );
                 }
 
                 sendToPeer(
@@ -3448,17 +2997,31 @@ io.on(
                             sessionDescription,
                     }
                 );
+
+                log.debug(
+                    '[' +
+                        socket.id +
+                        '] relay SessionDescription to [' +
+                        peerId +
+                        ']',
+                    {
+                        type:
+                            sessionDescription
+                                ?.type,
+                    }
+                );
             }
         );
 
-        /* ====================================================
-           RELAY ICE
-        ==================================================== */
+        // ====================================================
+        // RELAY ICE
+        // ====================================================
 
         socket.on(
             'relayICE',
-            config => {
-
+            (
+                config
+            ) => {
                 if (
                     !config
                 ) {
@@ -3476,7 +3039,13 @@ io.on(
                         peerId
                     )
                 ) {
-                    return;
+                    return log.warn(
+                        '[' +
+                            socket.id +
+                            '] relayICE blocked: no shared room with [' +
+                            peerId +
+                            ']'
+                    );
                 }
 
                 sendToPeer(
@@ -3494,110 +3063,15 @@ io.on(
             }
         );
 
-        /* ====================================================
-           PEER STATUS
-        ==================================================== */
-
-        socket.on(
-            'peerStatus',
-            cfg => {
-
-                const config =
-                    checkXSS(
-                        cfg
-                    );
-
-                const {
-                    roomId,
-                    peerName,
-                    element,
-                    active,
-                } =
-                    config;
-
-                if (
-                    peers[
-                        roomId
-                    ]
-                ) {
-                    for (
-                        const peerId in
-                        peers[
-                            roomId
-                        ]
-                    ) {
-
-                        const peer =
-                            peers[
-                                roomId
-                            ][
-                                peerId
-                            ];
-
-                        if (
-                            peer &&
-                            peer.peerName ===
-                                peerName
-                        ) {
-
-                            switch (
-                                element
-                            ) {
-
-                                case 'video':
-
-                                    peer.peerVideo =
-                                        active;
-
-                                    break;
-
-                                case 'audio':
-
-                                    peer.peerAudio =
-                                        active;
-
-                                    break;
-
-                                case 'screen':
-
-                                    peer.peerScreen =
-                                        active;
-
-                                    break;
-                            }
-                        }
-                    }
-                }
-
-                sendToRoom(
-                    roomId,
-                    socket.id,
-                    'peerStatus',
-                    {
-                        peerId:
-                            socket.id,
-
-                        peerName:
-                            peerName,
-
-                        element:
-                            element,
-
-                        active:
-                            active,
-                    }
-                );
-            }
-        );
-
-        /* ====================================================
-           DISCONNECT
-        ==================================================== */
+        // ====================================================
+        // DISCONNECT
+        // ====================================================
 
         socket.on(
             'disconnect',
-            reason => {
-
+            (
+                reason
+            ) => {
                 const joinedChannels =
                     Object.keys(
                         socket.channels ||
@@ -3612,6 +3086,16 @@ io.on(
                         channel
                     );
                 }
+
+                log.debug(
+                    '[' +
+                        socket.id +
+                        '] disconnected',
+                    {
+                        reason:
+                            reason,
+                    }
+                );
 
                 for (
                     const channel in
@@ -3660,35 +3144,129 @@ io.on(
                 delete sockets[
                     socket.id
                 ];
+            }
+        );
 
-                /*
-                 * تحديث عدد المتصلين
-                 * بالدردشة العامة.
-                 */
-                io.emit(
-                    'globalChatOnline',
-                    io.engine.clientsCount
+        // ====================================================
+        // PEER STATUS
+        // ====================================================
+
+        socket.on(
+            'peerStatus',
+            (
+                cfg
+            ) => {
+                const config =
+                    checkXSS(
+                        cfg
+                    );
+
+                const {
+                    roomId,
+                    peerName,
+                    element,
+                    active,
+                } =
+                    config;
+
+                if (
+                    peers[
+                        roomId
+                    ]
+                ) {
+                    for (
+                        const peerId in
+                        peers[
+                            roomId
+                        ]
+                    ) {
+                        if (
+                            peers[
+                                roomId
+                            ][
+                                peerId
+                            ] &&
+                            peers[
+                                roomId
+                            ][
+                                peerId
+                            ].peerName ===
+                                peerName
+                        ) {
+                            switch (
+                                element
+                            ) {
+                                case 'video':
+                                    peers[
+                                        roomId
+                                    ][
+                                        peerId
+                                    ].peerVideo =
+                                        active;
+                                    break;
+
+                                case 'audio':
+                                    peers[
+                                        roomId
+                                    ][
+                                        peerId
+                                    ].peerAudio =
+                                        active;
+                                    break;
+
+                                case 'screen':
+                                    peers[
+                                        roomId
+                                    ][
+                                        peerId
+                                    ].peerScreen =
+                                        active;
+                                    break;
+                            }
+                        }
+                    }
+                }
+
+                const data = {
+                    peerId:
+                        socket.id,
+
+                    peerName:
+                        peerName,
+
+                    element:
+                        element,
+
+                    active:
+                        active,
+                };
+
+                sendToRoom(
+                    roomId,
+                    socket.id,
+                    'peerStatus',
+                    data
                 );
 
                 log.debug(
-                    `[${socket.id}] disconnected`,
-                    {
-                        reason:
-                            reason,
-                    }
+                    '[' +
+                        socket.id +
+                        '] emit peerStatus to [roomId: ' +
+                        roomId +
+                        ']',
+                    data
                 );
             }
         );
 
-        /* ====================================================
-           ADD PEER
-        ==================================================== */
+        // ====================================================
+        // ADD PEER
+        // ====================================================
 
         async function addPeerTo(
             channel
         ) {
             try {
-
                 if (
                     !channels[
                         channel
@@ -3706,23 +3284,11 @@ io.on(
                         channel
                     ]
                 ) {
-
-                    const peerSocket =
-                        channels[
-                            channel
-                        ][
-                            id
-                        ];
-
-                    if (
-                        !peerSocket ||
-                        typeof peerSocket.emit !==
-                            'function'
-                    ) {
-                        continue;
-                    }
-
-                    await peerSocket.emit(
+                    await channels[
+                        channel
+                    ][
+                        id
+                    ].emit(
                         'addPeer',
                         {
                             peerId:
@@ -3759,25 +3325,34 @@ io.on(
                                 iceServers,
                         }
                     );
+
+                    log.debug(
+                        '[' +
+                            socket.id +
+                            '] emit addPeer [' +
+                            id +
+                            ']'
+                    );
                 }
-
-            } catch (error) {
-
+            } catch (
+                error
+            ) {
                 log.error(
-                    'Error in addPeerTo',
+                    '[' +
+                        socket.id +
+                        '] Error in addPeerTo',
                     error
                 );
             }
         }
 
-        /* ====================================================
-           REMOVE PEER
-        ==================================================== */
+        // ====================================================
+        // REMOVE PEER
+        // ====================================================
 
         async function removePeerFrom(
             channel
         ) {
-
             if (
                 !(
                     channel in
@@ -3788,7 +3363,6 @@ io.on(
             }
 
             try {
-
                 const channelSockets =
                     channels[
                         channel
@@ -3832,7 +3406,6 @@ io.on(
                     const id in
                     channelSockets
                 ) {
-
                     if (
                         id ===
                         socket.id
@@ -3840,17 +3413,18 @@ io.on(
                         continue;
                     }
 
-                    const peerSocket =
+                    if (
                         channelSockets[
                             id
-                        ];
-
-                    if (
-                        peerSocket &&
-                        typeof peerSocket.emit ===
+                        ] &&
+                        typeof channelSockets[
+                            id
+                        ].emit ===
                             'function'
                     ) {
-                        await peerSocket.emit(
+                        await channelSockets[
+                            id
+                        ].emit(
                             'removePeer',
                             {
                                 peerId:
@@ -3870,6 +3444,14 @@ io.on(
                             }
                         );
                     }
+
+                    log.debug(
+                        '[' +
+                            socket.id +
+                            '] emit removePeer [' +
+                            id +
+                            ']'
+                    );
                 }
 
                 if (
@@ -3883,7 +3465,6 @@ io.on(
                     ).length ===
                         0
                 ) {
-
                     delete peers[
                         channel
                     ];
@@ -3891,20 +3472,43 @@ io.on(
                     delete channels[
                         channel
                     ];
+
+                    log.debug(
+                        '[' +
+                            socket.id +
+                            '] Channel [' +
+                            channel +
+                            '] is now empty and removed'
+                    );
                 }
 
-            } catch (error) {
+                const activeRooms =
+                    getActiveRooms();
 
+                log.info(
+                    '[RemovePeer] - active rooms and peers count',
+                    activeRooms
+                );
+
+                log.debug(
+                    '[RemovePeer] - connected peers grp by roomId',
+                    peers
+                );
+            } catch (
+                error
+            ) {
                 log.error(
-                    'Error in removePeerFrom',
+                    '[' +
+                        socket.id +
+                        '] Error in removePeerFrom',
                     error
                 );
             }
         }
 
-        /* ====================================================
-           SEND TO ROOM
-        ==================================================== */
+        // ====================================================
+        // SEND TO ROOM
+        // ====================================================
 
         async function sendToRoom(
             roomId,
@@ -3912,7 +3516,6 @@ io.on(
             msg,
             config = {}
         ) {
-
             if (
                 !channels[
                     roomId
@@ -3927,32 +3530,22 @@ io.on(
                     roomId
                 ]
             ) {
-
                 if (
                     peerId !=
                     socketId
                 ) {
-
                     try {
-
-                        const peerSocket =
-                            channels[
-                                roomId
-                            ][
-                                peerId
-                            ];
-
-                        if (
-                            peerSocket
-                        ) {
-                            await peerSocket.emit(
-                                msg,
-                                config
-                            );
-                        }
-
-                    } catch (error) {
-
+                        await channels[
+                            roomId
+                        ][
+                            peerId
+                        ].emit(
+                            msg,
+                            config
+                        );
+                    } catch (
+                        error
+                    ) {
                         log.warn(
                             'Error sending message to room peer',
                             {
@@ -3968,9 +3561,9 @@ io.on(
             }
         }
 
-        /* ====================================================
-           SEND TO PEER
-        ==================================================== */
+        // ====================================================
+        // SEND TO PEER
+        // ====================================================
 
         async function sendToPeer(
             peerId,
@@ -3978,23 +3571,20 @@ io.on(
             msg,
             config = {}
         ) {
-
             if (
                 peerId in
                 socketsMap
             ) {
-
                 try {
-
                     await socketsMap[
                         peerId
                     ].emit(
                         msg,
                         config
                     );
-
-                } catch (error) {
-
+                } catch (
+                    error
+                ) {
                     log.warn(
                         'Error sending message to peer',
                         {
@@ -4008,12 +3598,11 @@ io.on(
             }
         }
 
-        /* ====================================================
-           ACTIVE ROOMS
-        ==================================================== */
+        // ====================================================
+        // ACTIVE ROOMS
+        // ====================================================
 
         function getActiveRooms() {
-
             const roomPeersArray =
                 [];
 
@@ -4021,14 +3610,12 @@ io.on(
                 const roomId in
                 peers
             ) {
-
                 if (
                     Object.prototype.hasOwnProperty.call(
                         peers,
                         roomId
                     )
                 ) {
-
                     const peersCount =
                         Object.keys(
                             peers[
@@ -4052,80 +3639,3 @@ io.on(
         }
     }
 );
-
-/* ============================================================
-   PERIODIC CLEANUP
-============================================================ */
-
-/*
- * تنظيف سجلات محاولات الدخول القديمة
- * حتى لا تكبر الـ Map بلا حدود.
- */
-setInterval(
-    () => {
-
-        const now =
-            Date.now();
-
-        for (
-            const [
-                ip,
-                record,
-            ] of loginSecurity
-        ) {
-
-            if (
-                !record.blockedUntil &&
-                record.attempts === 0
-            ) {
-                loginSecurity.delete(
-                    ip
-                );
-
-                continue;
-            }
-
-            if (
-                record.blockedUntil &&
-                now >=
-                    record.blockedUntil
-            ) {
-                loginSecurity.delete(
-                    ip
-                );
-            }
-        }
-
-    },
-    60 * 60 * 1000
-);
-
-/* ============================================================
-   GLOBAL ERROR HANDLING
-============================================================ */
-
-process.on(
-    'uncaughtException',
-    error => {
-
-        log.error(
-            'UNCAUGHT EXCEPTION',
-            error
-        );
-    }
-);
-
-process.on(
-    'unhandledRejection',
-    error => {
-
-        log.error(
-            'UNHANDLED REJECTION',
-            error
-        );
-    }
-);
-
-/* ============================================================
-   END
-============================================================ */
